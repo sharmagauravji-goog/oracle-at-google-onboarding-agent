@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oracle-google-ai-agent"
+version = "0.1.0"
+description = "LLM-Powered AI Architect Agent for Oracle Database@Google Cloud (Live Docs, ODB API & Terraform Provider Discovery)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Google Cloud & Oracle Architecture Team"}
+]
+dependencies = [
+    "google-genai>=1.0.0",
+    "pydantic>=2.7.0",
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "streamlit>=1.36.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+]
+
+[project.scripts]
+odb-ai-agent = "ai_agent.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ai_agent*"]

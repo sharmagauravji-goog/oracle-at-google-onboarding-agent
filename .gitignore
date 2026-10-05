@@ -1,0 +1,22 @@
+# Virtual environment & Python cache
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+
+# Local environment & secrets
+.env
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Generated output & local artifacts
+output/
+.DS_Store

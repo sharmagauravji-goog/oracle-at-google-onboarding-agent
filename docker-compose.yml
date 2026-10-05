@@ -1,0 +1,32 @@
+services:
+  odb-ai-agent-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8502:8502"
+    environment:
+      - ODB_AGENT_AUTH_MODE=${ODB_AGENT_AUTH_MODE:-auto}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ODB_AGENT_MODEL=${ODB_AGENT_MODEL:-gemini-3.8-flash}
+    volumes:
+      - ./output:/app/output
+
+  odb-ai-agent-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles:
+      - cli
+    entrypoint: ["odb-ai-agent"]
+    command: ["doctor"]
+    environment:
+      - ODB_AGENT_AUTH_MODE=${ODB_AGENT_AUTH_MODE:-auto}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ODB_AGENT_MODEL=${ODB_AGENT_MODEL:-gemini-3.8-flash}
+    volumes:
+      - ./output:/app/output
