@@ -20,12 +20,17 @@ from ai_agent.orchestrator import (
     ODBArchitectAgent,
     test_llm_connection,
 )
+from ai_agent.tools.day2_maintenance import (
+    analyze_day2_terraform_diff,
+    inspect_existing_terraform_workspace,
+)
 from ai_agent.tools.odb_live_discovery import (
+    check_live_vpc_subnet_overlaps,
     discover_live_odb_regions_and_zones,
     discover_live_odb_shapes_and_versions,
 )
 from ai_agent.tools.terraform_registry import (
-     KNOWN_ODB_RESOURCES,
+    EXACT_ODB_RESOURCE_SCHEMAS,
     get_latest_google_provider_version,
     get_odb_resource_documentation,
 )
@@ -50,13 +55,9 @@ def main() -> None:
 
     st.title("Oracle Database@Google Cloud — AI Architect Agent")
     st.caption(
-        "Autonomous LLM Agent powered by Gemini (`google-genai`) with live Terraform Registry schema inspection, "
-        "live `oracledatabase.googleapis.com` capability discovery, and official documentation lookup."
+        "Production Terraform Generator & Day-2 Maintenance Agent with 5-Layer Anti-Hallucination Guardrails."
     )
 
-    # ------------------------------------------------------------------
-    # Sidebar: Customer LLM Connection Configuration
-    # ------------------------------------------------------------------
     with st.sidebar:
         st.header("1. Connect to LLM")
         auth_choice = st.radio(
@@ -135,66 +136,61 @@ def main() -> None:
                 st.error(str(exc))
 
         st.divider()
-        st.subheader("Active Live Tools")
+        st.subheader("5-Layer Anti-Hallucination Guardrails")
         st.markdown(
-            "- `get_latest_google_provider_version`\n"
-            "- `list_odb_terraform_resources`\n"
-            "- `get_odb_resource_documentation`\n"
-            "- `discover_live_odb_regions_and_zones`\n"
-            "- `discover_live_odb_shapes_and_versions`\n"
-            "- `check_customer_gcp_readiness`\n"
-            "- `fetch_official_odb_documentation`\n"
-            "- `validate_odb_network_cidrs`\n"
-            "- `validate_terraform_hcl`\n"
-            "- `save_generated_terraform_bundle`"
+            "1. **Golden Baseline (`generate_golden_odb_terraform`)**\n"
+            "2. **Exact Provider Schema (`EXACT_ODB_RESOURCE_SCHEMAS`)**\n"
+            "3. **CIDR `/28` + Secret Leak Guard**\n"
+            "4. **Compiler Auto-Repair (`terraform validate`)**\n"
+            "5. **Day-2 `ForceNew` Destroy Protection**"
         )
 
-    # ------------------------------------------------------------------
-    # Main Tabs
-    # ------------------------------------------------------------------
-    tab_chat, tab_explorer, tab_guide = st.tabs(
+    tab_chat, tab_day2, tab_explorer, tab_guide = st.tabs(
         [
-            "AI Architect Agent (Chat + Live Tools)",
-            "Live Terraform & ODB API Inspector",
-            "Customer LLM Connection Guide",
+            "AI Architect Agent (Day-1 & Day-2)",
+            "Day-2 Maintenance & ForceNew Guard",
+            "Live Terraform & GCP VPC Inspector",
+            "Customer Setup & Cloud Shell Guide",
         ]
     )
 
     with tab_chat:
-        st.markdown("##### Quick Discovery Prompts")
+        st.markdown("##### Quick Production Workflows")
         q_cols = st.columns(3)
         prompt_to_run: str | None = None
         if q_cols[0].button(
-            "Check latest hashicorp/google version & ODB resources",
+            "Day-1: Generate Golden Autonomous DB 23ai Terraform",
             use_container_width=True,
         ):
             prompt_to_run = (
-                "Check the latest released version of the hashicorp/google Terraform provider "
-                "and list all supported google_oracle_database_* resources."
+                f"Generate a production-ready Golden Terraform configuration for an Oracle 23ai "
+                f"Autonomous Database in project '{project_id or 'my-odb-project-01'}', region 'us-east4', "
+                "zone 'us-east4-b-r1', VPC CIDR 10.10.0.0/16, and Client Subnet 10.20.1.0/24. "
+                "Validate the HCL and save it to ./output/adb-prod."
             )
         if q_cols[1].button(
-            "Inspect live Exascale VM Cluster Terraform schema",
+            "Day-1: Generate Golden Exascale Cluster Terraform",
             use_container_width=True,
         ):
             prompt_to_run = (
-                "Fetch the latest upstream Terraform documentation for "
-                "google_oracle_database_exadb_vm_cluster and show me a production example."
+                f"Generate a Golden Terraform bundle for an Exadata Exascale cluster in project "
+                f"'{project_id or 'my-odb-project-01'}' in us-east4 (zone us-east4-b-r1) with Client Subnet "
+                "10.20.1.0/24 and Backup Subnet 10.20.2.0/24, and validate the generated HCL."
             )
         if q_cols[2].button(
-            "Validate CIDRs & design Autonomous DB 23ai in us-east4",
+            "Day-2: Inspect Workspace & Safely Scale ECPUs",
             use_container_width=True,
         ):
             prompt_to_run = (
-                "Validate VPC CIDR 10.10.0.0/16 and Client Subnet 10.20.1.0/24, check the latest "
-                "google_oracle_database_autonomous_database schema, and generate Terraform for an "
-                "Oracle 23ai OLTP Autonomous Database in us-east4."
+                "Inspect the existing Terraform workspace in ./output, check if deletion_protection is enabled, "
+                "and show me how to safely scale compute_count in-place without triggering a ForceNew replacement."
             )
 
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 if msg.get("tool_traces"):
                     with st.expander(
-                        f"Executed {len(msg['tool_traces'])} live tool call(s)",
+                        f"Executed {len(msg['tool_traces'])} live tool / guardrail check(s)",
                         expanded=False,
                     ):
                         for trace in msg["tool_traces"]:
@@ -206,7 +202,7 @@ def main() -> None:
                 st.markdown(msg["content"])
 
         chat_input = st.chat_input(
-            "Ask about latest ODB@GCP features, live Terraform schemas, or request custom infrastructure code..."
+            "Ask to generate Day-1 Terraform, inspect live schemas, or perform safe Day-2 maintenance..."
         )
         active_prompt = prompt_to_run or chat_input
 
@@ -234,7 +230,7 @@ def main() -> None:
                         st.session_state.agent_instance = ODBArchitectAgent(cfg)
                         st.session_state.agent_config_key = config_fingerprint
 
-                    with st.spinner("Agent reasoning & querying live tools..."):
+                    with st.spinner("Agent reasoning, running live tools & verifying HCL guardrails..."):
                         turn = st.session_state.agent_instance.send_message(active_prompt)
 
                     serialized_traces = [
@@ -248,7 +244,7 @@ def main() -> None:
                     ]
                     if serialized_traces:
                         with st.expander(
-                            f"Executed {len(serialized_traces)} live tool call(s)",
+                            f"Executed {len(serialized_traces)} live tool / guardrail check(s)",
                             expanded=True,
                         ):
                             for trace in serialized_traces:
@@ -269,67 +265,106 @@ def main() -> None:
                 except Exception as exc:
                     st.error(f"LLM Agent Error: {exc}")
 
+    with tab_day2:
+        st.subheader("Day-2 Maintenance & Destructive Change (`ForceNew`) Guard")
+        col_w, col_d = st.columns(2)
+        with col_w:
+            st.markdown("#### 1. Inspect Existing Terraform Workspace")
+            ws_dir = st.text_input("Workspace Path", value="./output")
+            if st.button("Audit Workspace Resources & Deletion Protection"):
+                st.code(inspect_existing_terraform_workspace(ws_dir), language="json")
+
+        with col_d:
+            st.markdown("#### 2. Verify Day-2 Diff for Destructive Replacements")
+            sample_before = (
+                'resource "google_oracle_database_autonomous_database" "adb" {\n'
+                '  autonomous_database_id = "odb-prod-adb"\n'
+                '  database               = "ODBPROD1"\n'
+                '  location               = "us-east4"\n'
+                '  deletion_protection    = true\n'
+                '  properties {\n'
+                '    compute_count = 4\n'
+                '  }\n'
+                '}'
+            )
+            sample_after = (
+                'resource "google_oracle_database_autonomous_database" "adb" {\n'
+                '  autonomous_database_id = "odb-prod-adb"\n'
+                '  database               = "ODBPROD1"\n'
+                '  location               = "us-east4"\n'
+                '  deletion_protection    = true\n'
+                '  properties {\n'
+                '    compute_count = 8\n'
+                '  }\n'
+                '}'
+            )
+            existing_hcl = st.text_area("Current HCL (Before)", value=sample_before, height=160)
+            proposed_hcl = st.text_area("Proposed HCL (After)", value=sample_after, height=160)
+            if st.button("Analyze Day-2 Change Safety"):
+                st.code(analyze_day2_terraform_diff(existing_hcl, proposed_hcl), language="json")
+
     with tab_explorer:
-        st.subheader("Live Terraform Registry & ODB@GCP API Inspector")
+        st.subheader("Live Terraform Registry, Exact Schema & GCP VPC Overlap Inspector")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("#### 1. Latest `hashicorp/google` Provider Release")
+            st.markdown("#### 1. Latest `hashicorp/google` Provider & Exact Schema")
             if st.button("Query Terraform Registry Live"):
                 st.code(get_latest_google_provider_version(), language="json")
 
             selected_res = st.selectbox(
-                "Inspect Upstream Terraform Resource Schema",
-                options=list(KNOWN_ODB_RESOURCES.keys()),
+                "Inspect Exact Resource Schema (`top_level` vs `properties {}`)",
+                options=list(EXACT_ODB_RESOURCE_SCHEMAS.keys()),
             )
-            if st.button("Fetch Upstream Resource Docs"):
+            if st.button("Fetch Exact Schema & Upstream Docs"):
                 doc_data = json.loads(get_odb_resource_documentation(selected_res))
                 st.json(doc_data)
 
         with col2:
-            st.markdown("#### 2. Live ODB@GCP Cloud Capability Probe")
+            st.markdown("#### 2. Live GCP VPC Subnet Overlap & ODB Capability Probe")
             probe_project = st.text_input(
-                "Target GCP Project for Live API Probe",
+                "Target GCP Project",
                 value=project_id or "my-odb-project-01",
             )
             probe_region = st.text_input("Target Region", value="us-east4")
-            if st.button("Discover Live Regions & Shapes"):
-                st.markdown("**Regions & Oracle Zones:**")
-                st.code(discover_live_odb_regions_and_zones(probe_project), language="json")
-                st.markdown("**Shapes, GI Versions & ADB Versions:**")
+            probe_client_cidr = st.text_input("Proposed ODB Client CIDR", value="10.20.1.0/24")
+            if st.button("Check Live GCP Subnets & ODB Shapes"):
+                st.markdown("**Live GCP VPC Subnet Collision Check:**")
+                st.code(
+                    check_live_vpc_subnet_overlaps(probe_project, probe_client_cidr),
+                    language="json",
+                )
+                st.markdown("**Regions, Shapes, GI Versions & ADB Versions:**")
                 st.code(
                     discover_live_odb_shapes_and_versions(probe_project, probe_region),
                     language="json",
                 )
 
     with tab_guide:
-        st.subheader("How Customers Connect the Downloaded Agent to LLMs")
+        st.subheader("Customer Deployment & Zero-Setup Cloud Shell Guide")
         st.markdown(
             """
-            ### Option 1: Vertex AI via Google Cloud ADC (Recommended for Enterprise Customers)
-            Customers onboarding to Oracle Database@Google Cloud already have a GCP project and `gcloud` CLI.
-            No separate API keys are required:
+            ### Recommended Path 1: Google Cloud Shell (Zero Local Setup, Zero API Keys)
+            Google Cloud Shell comes pre-installed with `gcloud` (already logged in), `terraform`, `python3`, and `git`.
             ```bash
-            # 1. Authenticate with Google Cloud Application Default Credentials
-            gcloud auth application-default login
+            git clone <YOUR_REPO_URL>
+            cd oracle-google-ai-agent
+            python3 -m venv .venv && source .venv/bin/activate
+            pip install -r requirements.txt && pip install -e .
 
-            # 2. Enable the Vertex AI API in your project
-            gcloud services enable aiplatform.googleapis.com --project=YOUR_PROJECT_ID
-
-            # 3. Export your project ID and run the agent
-            export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
-            export GOOGLE_CLOUD_LOCATION="global"
+            # Verify Vertex AI ADC connection (uses active Cloud Shell project)
             odb-ai-agent doctor --ping-llm
+
+            # Generate a Golden Day-1 Terraform bundle directly or launch interactive chat
+            odb-ai-agent generate-golden --project-id $(gcloud config get-value project) --workload adb
             odb-ai-agent chat
             ```
 
             ---
 
-            ### Option 2: Gemini Developer API Key (Fastest for Local Evaluation)
-            For quick sandbox testing without enabling Vertex AI on a GCP project:
+            ### Recommended Path 2: Docker Container (For Corporate Laptops / Jump Hosts)
             ```bash
-            export GEMINI_API_KEY="your-google-ai-studio-key"
-            odb-ai-agent doctor --ping-llm
-            odb-ai-agent chat
+            docker compose up --build odb-ai-agent-web
+            # Open http://127.0.0.1:8502
             ```
             """
         )

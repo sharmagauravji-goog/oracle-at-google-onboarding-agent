@@ -1,105 +1,95 @@
 # Oracle Database@Google Cloud — Autonomous LLM Architect Agent (`oracle-google-ai-agent`)
 
-A standalone, **LLM-powered AI Architect Agent** for **Oracle Database@Google Cloud (ODB@GCP)** built on the official `google-genai` SDK (`gemini-3.8-flash` / `gemini-3.1-pro-preview`).
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/sharmagauravji-goog/oracle-google-ai-agent&cloudshell_tutorial=cloudshell_tutorial.md)
 
-Unlike the static wizard in `oracle-google-onboarding-agent`, this agent uses **live tool calling** to dynamically inspect:
-1. **Live Terraform Provider Releases & Resource Schemas** (`registry.terraform.io` + upstream `hashicorp/terraform-provider-google` markdown docs for `google_oracle_database_*`).
-2. **Live Google Cloud Oracle Database API Capabilities** (`oracledatabase.googleapis.com/v1` for live regions, `gcp_oracle_zone` identifiers, `dbSystemShapes`, `giVersions`, and `autonomousDbVersions`).
-3. **Live Official Documentation & Release Notes** (allow-listed HTTPS fetcher for `cloud.google.com/oracle/database/docs` and `docs.oracle.com`).
-4. **Deterministic Network & Terraform Guardrails** (CIDR `/28` minimum prefix check, pairwise overlap verification, `terraform validate` sandbox, and path-traversal-safe bundle export).
+A production-grade, **LLM-powered AI Architect Agent** for **Oracle Database@Google Cloud (ODB@GCP)** built on the official `google-genai` SDK (`gemini-3.8-flash` / `gemini-3.1-pro-preview`).
+
+Designed for **external customers** to run in their own environments (**Google Cloud Shell**, local laptops, or corporate jump hosts) to **create (Day-1)** and **maintain/evolve (Day-2)** production Oracle@Google Terraform configurations with **5-layer anti-hallucination guardrails**.
 
 ---
 
-## 1. Architecture Overview
+## 1. The 5-Layer Anti-Hallucination Guardrail Pipeline
+
+LLMs writing raw Terraform from memory frequently confuse **OCI Terraform provider** resources (`oci_database_*`) with **Google Cloud Terraform provider** resources (`google_oracle_database_*`), or misplace nested `properties {}` attributes. This agent enforces a 5-layer deterministic verification loop:
 
 ```mermaid
 flowchart TB
-    Customer["Customer (CLI `odb-ai-agent` or Streamlit Studio)"] <--> Agent["ODBArchitectAgent\n(ai_agent/orchestrator.py)"]
-
-    subgraph LLMAuth["Customer LLM Connection (ai_agent/llm_client.py)"]
-        VertexADC["Option 1: Vertex AI via gcloud ADC\n(Zero API keys; uses customer GCP project)"]
-        GeminiKey["Option 2: Gemini Developer API Key\n(GEMINI_API_KEY env var)"]
-    end
-
-    subgraph LiveTools["Live Agent Tools (ai_agent/tools/)"]
-        TFReg["terraform_registry.py\nLive hashicorp/google version & upstream resource docs"]
-        ODBAPI["odb_live_discovery.py\nLive oracledatabase.googleapis.com regions, shapes & versions"]
-        Docs["docs_fetcher.py\nAllow-listed HTTPS docs & release notes fetcher"]
-        NetVal["network_validator.py\nCIDR /28 + overlap validator & sandboxed HCL exporter"]
-    end
-
-    Agent --> LLMAuth
-    Agent --> LiveTools
+    Req["Customer Request\n(Day-1 Provisioning or Day-2 Maintenance)"] --> G1["Guardrail 1: Golden Baseline Engine\n(ai_agent/tools/golden_templates.py)\nRenders proven hashicorp/google >= 7.0.0 HCL"]
+    G1 --> G2["Guardrail 2: Exact Provider Schema Grounding\n(ai_agent/tools/terraform_registry.py)\nSeparates top-level vs properties {} attributes & blocks oci_* hallucinations"]
+    G2 --> G3["Guardrail 3: Deterministic Network & Secret Guard\n(ai_agent/tools/network_validator.py)\nCIDR /28 minimum prefix, pairwise overlap & no secrets in .tfvars"]
+    G3 --> G4["Guardrail 4: Live GCP Environment & Compiler Auto-Repair\n(ai_agent/orchestrator.py + odb_live_discovery.py)\nLive VPC subnet collision check + `terraform validate` self-healing loop"]
+    G4 -->|If schema/syntax error: auto-repair with Gemini| G2
+    G4 -->|Verified| G5["Guardrail 5: Day-2 ForceNew Destroy Guard\n(ai_agent/tools/day2_maintenance.py)\nBlocks changes to immutable attributes that would destroy live DBs"]
+    G5 --> Out["Verified Production Terraform Bundle (./output)"]
 ```
 
 ---
 
-## 2. How a Customer Connects the Downloaded Agent to LLMs
+## 2. Easiest Customer Setup Options
 
-### Option A: Vertex AI via `gcloud` ADC (Recommended for Enterprise GCP Customers — Zero API Keys)
-Because customers deploying Oracle Database@Google Cloud already have a Google Cloud project and the `gcloud` CLI, the agent can authenticate directly through **Application Default Credentials (ADC)**:
+### Path 1: 1-Click Google Cloud Shell (Recommended — Zero Install, Zero API Keys)
+Google Cloud Shell comes pre-installed with `gcloud` (already logged in), `terraform`, `python3`, and `git`.
+1. Click the **Open in Cloud Shell** button at the top of this README (or clone the repo inside Cloud Shell).
+2. Cloud Shell automatically walks you through [`cloudshell_tutorial.md`](./cloudshell_tutorial.md) using your active GCP project's Vertex AI Application Default Credentials (`location="global"`).
 
-```bash
-# 1. Log in with Google Cloud ADC
-gcloud auth application-default login
-
-# 2. Ensure the Vertex AI API is enabled in your project
-gcloud services enable aiplatform.googleapis.com --project=YOUR_GCP_PROJECT_ID
-
-# 3. Export your project settings
-export ODB_AGENT_AUTH_MODE="vertex"
-export GOOGLE_CLOUD_PROJECT="YOUR_GCP_PROJECT_ID"
-export GOOGLE_CLOUD_LOCATION="global"
-```
-
-### Option B: Gemini Developer API Key (Fastest for Local Evaluation)
-For quick local testing without enabling Vertex AI in a GCP project:
-
-```bash
-export ODB_AGENT_AUTH_MODE="api_key"
-export GEMINI_API_KEY="your-google-ai-studio-api-key"
-```
-
----
-
-## 3. Quick Start
-
+### Path 2: Local Virtual Environment (`venv` + `gcloud` ADC or `GEMINI_API_KEY`)
 ```bash
 # 1. Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# 2. Install dependencies
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 .venv/bin/pip install -e .
-```
 
-### Verify Environment & LLM Connection (`doctor`)
-```bash
-# Check gcloud, Terraform Registry connectivity, and configured LLM credentials
-odb-ai-agent doctor
+# 2A. Connect via Vertex AI ADC (Enterprise Default — Zero API Keys)
+gcloud auth application-default login
+export GOOGLE_CLOUD_PROJECT="your-gcp-project-id"
+export GOOGLE_CLOUD_LOCATION="global"
 
-# Send a live test handshake to Gemini
+# 2B. Or connect via Gemini Developer API Key
+# export GEMINI_API_KEY="your-google-ai-studio-api-key"
+
+# 3. Verify environment & live LLM handshake
 odb-ai-agent doctor --ping-llm
 ```
 
-### Inspect Live Terraform Provider & Resource Schemas (No LLM Key Required)
+### Path 3: Single-Command Docker Container
 ```bash
-# List latest hashicorp/google version and all ODB resources
-odb-ai-agent inspect-provider
-
-# Fetch live upstream documentation for a specific resource
-odb-ai-agent inspect-provider --resource google_oracle_database_exadb_vm_cluster
+docker compose up --build odb-ai-agent-web
+# Open http://127.0.0.1:8502
 ```
 
-### Run the Interactive Terminal Agent (`chat` or `ask`)
+---
+
+## 3. CLI & Web Studio Usage (Day-1 Creation & Day-2 Maintenance)
+
+### Generate a Verified Golden Terraform Bundle (Day-1)
 ```bash
-# Multi-turn interactive architect chat with live tool execution trace
+# Generates versions.tf, variables.tf, networking.tf, workload.tf, outputs.tf, terraform.tfvars
+# Runs CIDR /28 + overlap checks, anti-hallucination schema checks, and `terraform validate`
+odb-ai-agent generate-golden \
+  --project-id my-odb-project-01 \
+  --workload adb \
+  --region us-east4 \
+  --oracle-zone us-east4-b-r1 \
+  --vpc-cidr 10.10.0.0/16 \
+  --client-cidr 10.20.1.0/24
+```
+
+### Inspect an Existing Workspace for Safe Day-2 Maintenance
+```bash
+# Inventories existing .tf files, audits deletion_protection = true,
+# and lists safe in-place scaling attributes vs. immutable ForceNew replacement attributes
+odb-ai-agent inspect-day2 --workspace-dir ./output/odb-golden-bundle
+```
+
+### Interactive AI Architect Chat & Single-Shot Queries
+```bash
+# Multi-turn terminal chat with live tool execution trace & post-generation HCL auto-repair
 odb-ai-agent chat
 
-# Single-shot question or Terraform generation request
-odb-ai-agent ask "Check the latest hashicorp/google provider version and generate Terraform for an Oracle 23ai Autonomous Database in us-east4 with VPC 10.10.0.0/16 and Client Subnet 10.20.1.0/24."
+# Single-shot request
+odb-ai-agent ask "Generate a Golden Exascale Terraform configuration in us-east4 and verify that 10.20.1.0/24 does not overlap with existing subnets."
 ```
 
 ### Launch the Streamlit AI Agent Studio
@@ -109,7 +99,7 @@ streamlit run ai_agent/web.py --server.address=127.0.0.1 --server.port=8502
 
 ---
 
-## 4. Running Tests
+## 4. Running the Test Suite
 
 ```bash
 .venv/bin/pytest -v

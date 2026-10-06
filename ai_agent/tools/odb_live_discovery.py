@@ -1,14 +1,16 @@
-"""Live Google Cloud Oracle Database API (`oracledatabase.googleapis.com`) Discovery Tools.
+"""Live Google Cloud Oracle Database API (`oracledatabase.googleapis.com`) & VPC Subnet Discovery Tools (Guardrail 4).
 
 Enables the AI Agent to query the customer's live Google Cloud project for:
 - Currently supported ODB@GCP regions and `gcp_oracle_zone` identifiers
 - Available hardware shapes (`dbSystemShapes`: Exadata X9M/X11M, Exascale, BaseDB VM shapes)
 - Supported Oracle Grid Infrastructure (`giVersions`) and Autonomous DB versions (`autonomousDbVersions`)
+- Live GCP VPC subnet CIDRs (`gcloud compute networks subnets list`) to prevent CIDR collisions with existing subnets
 - GCP API enablement status (`oracledatabase.googleapis.com`, `aiplatform.googleapis.com`, etc.)
 """
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import shutil
@@ -19,6 +21,7 @@ import httpx
 
 _PROJECT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9\-]{4,28}[a-z0-9]$")
 _REGION_PATTERN = re.compile(r"^[a-z]+-[a-z]+[0-9]+$")
+_VPC_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9\-]{0,61}[a-z0-9]$")
 
 FALLBACK_REGIONS_AND_ZONES: dict[str, list[str]] = {
     "us-east4": ["us-east4-b-r1", "us-east4-c-r1"],
@@ -211,6 +214,133 @@ def discover_live_odb_shapes_and_versions(project_id: str, region: str = "us-eas
         },
         indent=2,
     )
+
+
+def check_live_vpc_subnet_overlaps(
+    project_id: str,
+    client_subnet_cidr: str,
+    backup_subnet_cidr: str = "",
+    vpc_name: str = "",
+) -> str:
+    """Queries live GCP VPC subnets in `project_id` and verifies that proposed ODB CIDRs do not collide with existing subnets.
+
+    Args:
+        project_id: Google Cloud project ID hosting the VPC (or Shared VPC host project).
+        client_subnet_cidr: Proposed ODB Client Subnet CIDR (e.g. `10.20.1.0/24`).
+        backup_subnet_cidr: Optional proposed ODB Backup Subnet CIDR (e.g. `10.20.2.0/24`).
+        vpc_name: Optional VPC network name to filter subnets.
+
+    Returns:
+        JSON string reporting all discovered existing GCP subnets and any CIDR collisions.
+    """
+    cleaned_project = project_id.strip()
+    if not _PROJECT_ID_PATTERN.match(cleaned_project):
+        return json.dumps({"error": f"Invalid GCP project_id '{cleaned_project}'."})
+
+    cleaned_vpc = vpc_name.strip()
+    if cleaned_vpc and not _VPC_NAME_PATTERN.match(cleaned_vpc):
+        return json.dumps({"error": f"Invalid vpc_name '{cleaned_vpc}'."})
+
+    proposed_nets: dict[str, ipaddress.IPv4Network] = {}
+    for label, raw_cidr in (
+        ("client_subnet_cidr", client_subnet_cidr),
+        ("backup_subnet_cidr", backup_subnet_cidr),
+    ):
+        if raw_cidr and raw_cidr.strip():
+            try:
+                proposed_nets[label] = ipaddress.IPv4Network(raw_cidr.strip(), strict=False)
+            except ValueError as exc:
+                return json.dumps({"error": f"Invalid {label} '{raw_cidr}': {exc}"})
+
+    gcloud_bin = shutil.which("gcloud")
+    if not gcloud_bin:
+        return json.dumps(
+            {
+                "live_vpc_checked": False,
+                "reason": "gcloud CLI not installed",
+            },
+            indent=2,
+        )
+
+    cmd = [
+        gcloud_bin,
+        "compute",
+        "networks",
+        "subnets",
+        "list",
+        f"--project={cleaned_project}",
+        "--format=json",
+        "--quiet",
+    ]
+    if cleaned_vpc:
+        cmd.append(f"--network={cleaned_vpc}")
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return json.dumps(
+                {
+                    "live_vpc_checked": False,
+                    "project_id": cleaned_project,
+                    "detail": (proc.stderr or "").strip()[:400],
+                },
+                indent=2,
+            )
+
+        subnets_data = json.loads(proc.stdout or "[]")
+        existing_subnets: list[dict[str, str]] = []
+        collisions: list[dict[str, str]] = []
+
+        for item in subnets_data:
+            s_name = item.get("name", "unknown")
+            s_cidr = item.get("ipCidrRange", "")
+            s_region = item.get("region", "").split("/")[-1]
+            s_net = item.get("network", "").split("/")[-1]
+            if not s_cidr:
+                continue
+            existing_subnets.append(
+                {
+                    "name": s_name,
+                    "cidr": s_cidr,
+                    "region": s_region,
+                    "network": s_net,
+                }
+            )
+            try:
+                existing_ip_net = ipaddress.IPv4Network(s_cidr, strict=False)
+                for prop_label, prop_net in proposed_nets.items():
+                    if prop_net.overlaps(existing_ip_net):
+                        collisions.append(
+                            {
+                                "proposed_odb_subnet": f"{prop_label} ({prop_net})",
+                                "colliding_gcp_subnet": s_name,
+                                "colliding_gcp_cidr": s_cidr,
+                                "region": s_region,
+                                "network": s_net,
+                            }
+                        )
+            except ValueError:
+                continue
+
+        return json.dumps(
+            {
+                "live_vpc_checked": True,
+                "project_id": cleaned_project,
+                "collision_free": len(collisions) == 0,
+                "collisions": collisions,
+                "existing_gcp_subnets_count": len(existing_subnets),
+                "existing_gcp_subnets_sample": existing_subnets[:20],
+            },
+            indent=2,
+        )
+    except Exception as exc:
+        return json.dumps({"live_vpc_checked": False, "error": str(exc)}, indent=2)
 
 
 def check_customer_gcp_readiness(project_id: str) -> str:

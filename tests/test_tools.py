@@ -7,19 +7,26 @@ from pathlib import Path
 
 import pytest
 
+from ai_agent.tools.day2_maintenance import (
+    analyze_day2_terraform_diff,
+    inspect_existing_terraform_workspace,
+)
 from ai_agent.tools.docs_fetcher import (
     fetch_official_odb_documentation,
     validate_documentation_url,
 )
+from ai_agent.tools.golden_templates import generate_golden_odb_terraform
 from ai_agent.tools.network_validator import (
     save_generated_terraform_bundle,
     validate_odb_network_cidrs,
 )
 from ai_agent.tools.odb_live_discovery import (
+    check_live_vpc_subnet_overlaps,
     discover_live_odb_regions_and_zones,
     discover_live_odb_shapes_and_versions,
 )
 from ai_agent.tools.terraform_registry import (
+    check_hcl_for_provider_hallucinations,
     get_odb_resource_documentation,
     list_odb_terraform_resources,
 )
@@ -116,3 +123,122 @@ def test_odb_live_discovery_validates_inputs_and_returns_capabilities() -> None:
     )
     assert shapes.get("region") == "us-east4"
     assert "capabilities" in shapes or "live_capabilities" in shapes
+
+    bad_overlap = json.loads(
+        check_live_vpc_subnet_overlaps(
+            project_id="my-odb-project-01",
+            client_subnet_cidr="999.999.1.0/24",
+            vpc_name="default",
+        )
+    )
+    assert "error" in bad_overlap
+
+
+def test_guardrail_1_golden_template_generator_passes_hallucination_checks() -> None:
+    for workload in ("adb", "exadata_dedicated", "exascale", "basedb"):
+        res = json.loads(
+            generate_golden_odb_terraform(
+                project_id="my-odb-project-01",
+                region="us-east4",
+                workload_type=workload,
+                environment_prefix="prod-odb",
+            )
+        )
+        assert res["valid"] is True
+        assert res["workload_type"] == workload
+        assert res["guardrail_checks"]["cidr_slash28_and_overlap"] == "PASSED"
+        files = res["files"]
+        assert "versions.tf" in files
+        assert "networking.tf" in files
+        assert "workload.tf" in files
+
+        # Every file in the golden baseline must pass Guardrail Layer 2 with zero errors
+        for filename, hcl_content in files.items():
+            if filename.endswith(".tf"):
+                issues = check_hcl_for_provider_hallucinations(hcl_content)
+                assert issues == [], f"Golden {workload}/{filename} failed: {issues}"
+
+
+def test_guardrail_2_detects_oci_and_attribute_hallucinations() -> None:
+    hallucinated_hcl = '''
+resource "oci_database_autonomous_database" "bad_oci" {
+  compartment_id = "ocid1.compartment.oc1..example"
+}
+
+resource "google_oracle_database_odb_subnet" "bad_subnet" {
+  odb_network = "projects/p/locations/us-east4/odbNetworks/net"
+  cidr        = "10.20.1.0/24"
+}
+
+resource "google_oracle_database_autonomous_database" "bad_adb" {
+  autonomous_database_id = "adb1"
+  compute_count          = 4
+  data_storage_size_tb   = 1
+}
+'''
+    issues = check_hcl_for_provider_hallucinations(hallucinated_hcl)
+    assert len(issues) >= 3
+    joined_issues = " ".join(issues)
+    assert "oci_database_autonomous_database" in joined_issues
+    assert "odbnetwork" in joined_issues
+    assert "properties { ... }" in joined_issues
+
+
+def test_guardrail_5_day2_workspace_inspector_and_forcenew_diff_analyzer(
+    tmp_path: Path,
+) -> None:
+    golden = json.loads(
+        generate_golden_odb_terraform(
+            project_id="my-odb-project-01",
+            region="us-east4",
+            workload_type="adb",
+        )
+    )
+    save_generated_terraform_bundle(
+        files_json=json.dumps(golden["files"]),
+        bundle_name="day2-ws",
+        base_output_dir=str(tmp_path),
+    )
+    ws_dir = tmp_path / "day2-ws"
+
+    inspection = json.loads(inspect_existing_terraform_workspace(str(ws_dir)))
+    assert inspection["exists"] is True
+    assert len(inspection["tf_files"]) >= 5
+    discovered = inspection["discovered_odb_resources"]
+    resource_types = {meta["resource_type"] for meta in discovered.values()}
+    assert "google_oracle_database_autonomous_database" in resource_types
+
+    orig_workload = golden["files"]["workload.tf"]
+    # 1. Safe Day-2 scaling change (modifying compute_count in-place)
+    safe_modified = orig_workload.replace(
+        "compute_count        = 4",
+        "compute_count        = 8",
+    )
+    safe_diff = json.loads(
+        analyze_day2_terraform_diff(
+            existing_hcl=orig_workload,
+            proposed_hcl=safe_modified,
+        )
+    )
+    assert safe_diff["safe_day2_change"] is True
+    assert safe_diff["destructive_replacement_warnings"] == []
+
+    # 2. Destructive Day-2 change (modifying autonomous_database_id or odb_network)
+    destructive_modified = orig_workload.replace(
+        'autonomous_database_id = "${var.environment_prefix}-adb"',
+        'autonomous_database_id = "brand-new-adb-id"',
+    )
+    destructive_diff = json.loads(
+        analyze_day2_terraform_diff(
+            existing_hcl=orig_workload,
+            proposed_hcl=destructive_modified,
+        )
+    )
+    assert destructive_diff["safe_day2_change"] is False
+    assert len(destructive_diff["destructive_replacement_warnings"]) >= 1
+    assert (
+        destructive_diff["destructive_replacement_warnings"][0]["attribute"]
+        == "autonomous_database_id"
+    )
+
+

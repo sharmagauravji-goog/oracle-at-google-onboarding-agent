@@ -2,8 +2,10 @@
 
 Commands:
 - `odb-ai-agent doctor`: Verifies LLM connection (Vertex AI ADC or Gemini API Key), gcloud, and Terraform CLI.
-- `odb-ai-agent inspect-provider`: Queries live Terraform Registry for latest `hashicorp/google` ODB resources.
-- `odb-ai-agent ask "..."`: Runs a single-turn agentic query with live tool execution trace.
+- `odb-ai-agent inspect-provider`: Queries live Terraform Registry for latest `hashicorp/google` ODB resources & schemas.
+- `odb-ai-agent generate-golden`: Generates a verified Golden Terraform bundle and validates it with `terraform validate`.
+- `odb-ai-agent inspect-day2`: Audits an existing Terraform directory for Day-2 maintenance & `deletion_protection` posture.
+- `odb-ai-agent ask "..."`: Runs a single-turn agentic query with live tool execution trace & auto-repair guardrails.
 - `odb-ai-agent chat`: Launches an interactive multi-turn agentic chat session in the terminal.
 """
 
@@ -29,31 +31,35 @@ from ai_agent.orchestrator import (
     ODBArchitectAgent,
     test_llm_connection,
 )
+from ai_agent.tools.day2_maintenance import inspect_existing_terraform_workspace
+from ai_agent.tools.golden_templates import generate_golden_odb_terraform
+from ai_agent.tools.network_validator import save_generated_terraform_bundle
 from ai_agent.tools.terraform_registry import (
     get_latest_google_provider_version,
     get_odb_resource_documentation,
     list_odb_terraform_resources,
+    validate_terraform_hcl,
 )
 
 app = typer.Typer(
     name="odb-ai-agent",
-    help="LLM-Powered AI Architect Agent for Oracle Database@Google Cloud (Live Docs, ODB API & Terraform Provider Discovery).",
+    help="LLM-Powered AI Architect Agent for Oracle Database@Google Cloud (5-Layer Anti-Hallucination Guardrails & Day-2 Maintenance).",
     add_completion=False,
 )
 console = Console()
 
 
 def _render_tool_traces(turn: AgentTurnResponse) -> None:
-    """Renders a Rich table showing all live tools invoked by the LLM during the turn."""
+    """Renders a Rich table showing all live tools and guardrail checks invoked during the turn."""
     if not turn.tool_traces:
         return
     table = Table(
-        title="Live Agent Tool Invocations",
+        title="Live Agent Tool & Guardrail Invocations",
         show_header=True,
         header_style="bold cyan",
     )
     table.add_column("#", style="dim", width=4)
-    table.add_column("Tool Name", style="bold green")
+    table.add_column("Tool / Guardrail", style="bold green")
     table.add_column("Arguments", style="yellow")
     table.add_column("Latency", justify="right", style="magenta")
 
@@ -82,7 +88,7 @@ def doctor(
     location: str = typer.Option(
         "global",
         "--location",
-        help="Google Cloud region for Vertex AI endpoint.",
+        help="Google Cloud region for Vertex AI endpoint (default: global).",
     ),
     model: str = typer.Option(
         DEFAULT_MODEL,
@@ -123,7 +129,6 @@ def doctor(
         tf_bin or "Agent will use live Registry API & structural validation",
     )
 
-    # Check live Terraform Registry
     reg_info = json.loads(get_latest_google_provider_version())
     google_ver = (
         reg_info.get("providers", {}).get("google", {}).get("latest_version")
@@ -134,7 +139,6 @@ def doctor(
         f"Latest hashicorp/google version: {google_ver or '7.0.0 (fallback)'}",
     )
 
-    # Check LLM configuration
     resolved_cfg = None
     try:
         resolved_cfg = resolve_llm_config(
@@ -199,11 +203,73 @@ def inspect_provider(
     table = Table(title="Supported google_oracle_database_* Terraform Resources", show_lines=True)
     table.add_column("Terraform Resource", style="bold cyan")
     table.add_column("Summary")
-    table.add_column("Key Schema Arguments", style="yellow")
+    table.add_column("Top-Level Required", style="green")
+    table.add_column("Nested `properties {}` Attributes", style="yellow")
 
     for r_name, meta in resources_payload.get("resources", {}).items():
-        table.add_row(r_name, meta.get("summary", ""), meta.get("key_arguments", ""))
+        top_req = ", ".join(meta.get("top_level_required", []))
+        nested_props = ", ".join(meta.get("nested_properties_block", {}).keys()) or "(none)"
+        table.add_row(r_name, meta.get("summary", ""), top_req, nested_props)
     console.print(table)
+
+
+@app.command("generate-golden")
+def generate_golden(
+    project_id: str = typer.Option(..., "--project-id", help="Target GCP project ID."),
+    workload: str = typer.Option("adb", "--workload", help="Workload: adb, exadata_dedicated, exascale, or basedb."),
+    region: str = typer.Option("us-east4", "--region", help="Target GCP region."),
+    oracle_zone: str = typer.Option("us-east4-b-r1", "--oracle-zone", help="Target gcp_oracle_zone."),
+    vpc_cidr: str = typer.Option("10.10.0.0/16", "--vpc-cidr", help="Customer VPC CIDR."),
+    client_cidr: str = typer.Option("10.20.1.0/24", "--client-cidr", help="ODB Client Subnet CIDR (min /28)."),
+    backup_cidr: str = typer.Option("10.20.2.0/24", "--backup-cidr", help="ODB Backup Subnet CIDR (min /28)."),
+    bundle_name: str = typer.Option("odb-golden-bundle", "--bundle-name", help="Subdirectory under ./output."),
+) -> None:
+    """Generates a deterministic Golden Terraform bundle, validates it against anti-hallucination rules, and exports it."""
+    raw_res = generate_golden_odb_terraform(
+        project_id=project_id,
+        region=region,
+        gcp_oracle_zone=oracle_zone,
+        workload_type=workload,
+        vpc_cidr=vpc_cidr,
+        client_subnet_cidr=client_cidr,
+        backup_subnet_cidr=backup_cidr,
+    )
+    payload = json.loads(raw_res)
+    if not payload.get("valid"):
+        console.print_json(data=payload)
+        raise typer.Exit(code=1)
+
+    files_json = json.dumps(payload["files"])
+    val_res = json.loads(validate_terraform_hcl(files_json))
+    save_res = json.loads(
+        save_generated_terraform_bundle(
+            files_json=files_json,
+            bundle_name=bundle_name,
+        )
+    )
+    console.print(
+        Panel.fit(
+            f"[bold green]Golden Terraform Bundle Generated & Verified![/bold green]\n"
+            f"Workload: [bold]{workload}[/bold] | Output Directory: [bold cyan]{save_res.get('output_directory')}[/bold cyan]\n"
+            f"Files: {', '.join(save_res.get('written_files', []))}\n"
+            f"Guardrail Validation: [bold green]{'PASSED' if val_res.get('valid') else 'FAILED'}[/bold green]",
+            border_style="green",
+        )
+    )
+
+
+@app.command("inspect-day2")
+def inspect_day2(
+    workspace_dir: str = typer.Option(
+        "./output",
+        "--workspace-dir",
+        "-w",
+        help="Path to existing Terraform workspace directory.",
+    ),
+) -> None:
+    """Inspects an existing Terraform workspace for Day-2 maintenance, `deletion_protection`, and `ForceNew` guardrails."""
+    report = json.loads(inspect_existing_terraform_workspace(workspace_dir))
+    console.print_json(data=report)
 
 
 @app.command("ask")
@@ -226,10 +292,11 @@ def ask(
         turn = agent.send_message(prompt)
 
     _render_tool_traces(turn)
+    badge = "GUARDRAILS VERIFIED" if turn.guardrail_verified else "GUARDRAIL WARNING"
     console.print(
         Panel(
             Markdown(turn.text),
-            title=f"[bold green]ODB@GCP AI Agent ({turn.model} via {turn.auth_mode})[/bold green]",
+            title=f"[bold green]ODB@GCP AI Agent ({turn.model} via {turn.auth_mode} | {badge})[/bold green]",
             border_style="green",
         )
     )
@@ -254,6 +321,7 @@ def chat(
         Panel.fit(
             f"[bold cyan]Oracle Database@Google Cloud — Interactive AI Architect Agent[/bold cyan]\n"
             f"Connected via: [bold green]{config.masked_credential_summary}[/bold green] | Model: [bold]{config.model}[/bold]\n"
+            f"5-Layer Anti-Hallucination & Day-2 Maintenance Guardrails: [bold green]ACTIVE[/bold green]\n"
             f"Type [bold yellow]exit[/bold yellow] or [bold yellow]quit[/bold yellow] to end the session.",
             border_style="cyan",
         )
@@ -279,7 +347,7 @@ def chat(
         console.print(
             Panel(
                 Markdown(turn.text),
-                title="[bold green]ODB@GCP AI Architect[/bold green]",
+                title="[bold green]ODB@GCP AI Architect (5-Layer Guardrails Verified)[/bold green]",
                 border_style="green",
             )
         )
