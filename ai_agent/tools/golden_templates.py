@@ -120,7 +120,7 @@ def generate_golden_odb_terraform(
     del_prot_str = "true" if enable_deletion_protection else "false"
 
     versions_tf = """terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.3.0"
 
   required_providers {
     google = {
@@ -209,20 +209,21 @@ variable "ssh_public_keys" {{
 
     backup_subnet_hcl = ""
     if needs_backup:
-        backup_subnet_hcl = """
-resource "google_oracle_database_odb_subnet" "backup_subnet" {
-  project       = var.project_id
-  location      = var.region
-  odbnetwork    = google_oracle_database_odb_network.odb_net.odb_network_id
-  odb_subnet_id = "${var.environment_prefix}-backup-subnet"
-  cidr_range    = var.backup_subnet_cidr
-  purpose       = "BACKUP_SUBNET"
+        backup_subnet_hcl = f"""
+resource "google_oracle_database_odb_subnet" "backup_subnet" {{
+  project             = var.project_id
+  location            = var.region
+  odbnetwork          = google_oracle_database_odb_network.odb_net.odb_network_id
+  odb_subnet_id       = "${{var.environment_prefix}}-backup-subnet"
+  cidr_range          = var.backup_subnet_cidr
+  purpose             = "BACKUP_SUBNET"
+  deletion_protection = {del_prot_str}
 
-  labels = {
+  labels = {{
     environment = var.environment_prefix
     managed_by  = "terraform"
-  }
-}
+  }}
+}}
 """
 
     networking_tf = f"""data "google_compute_network" "customer_vpc" {{
@@ -245,12 +246,13 @@ resource "google_oracle_database_odb_network" "odb_net" {{
 }}
 
 resource "google_oracle_database_odb_subnet" "client_subnet" {{
-  project       = var.project_id
-  location      = var.region
-  odbnetwork    = google_oracle_database_odb_network.odb_net.odb_network_id
-  odb_subnet_id = "${{var.environment_prefix}}-client-subnet"
-  cidr_range    = var.client_subnet_cidr
-  purpose       = "CLIENT_SUBNET"
+  project             = var.project_id
+  location            = var.region
+  odbnetwork          = google_oracle_database_odb_network.odb_net.odb_network_id
+  odb_subnet_id       = "${{var.environment_prefix}}-client-subnet"
+  cidr_range          = var.client_subnet_cidr
+  purpose             = "CLIENT_SUBNET"
+  deletion_protection = {del_prot_str}
 
   labels = {{
     environment = var.environment_prefix
