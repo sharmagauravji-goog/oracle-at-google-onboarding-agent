@@ -192,12 +192,94 @@ def resolve_llm_config(
     )
 
 
+from datetime import datetime, timedelta, timezone
+import google.auth
+from google.auth.credentials import Credentials as GoogleAuthCredentials
+from google.auth.exceptions import DefaultCredentialsError, RefreshError
+
+
+class _GcloudCLICredentials(GoogleAuthCredentials):
+    """Auto-refreshing Google Auth Credentials backed by `gcloud auth print-access-token`.
+
+    In Google Cloud Shell, the emulated GCE metadata server does not include an `'email'`
+    field in `/computeMetadata/v1/instance/service-accounts/default/`, causing `google-auth`
+    to fail with `Unexpected response from metadata server: service account info is missing 'email' field`.
+    This credential provider transparently uses the active `gcloud` CLI session (`gcloud auth print-access-token`),
+    allowing zero-friction execution in Cloud Shell and local environments where `gcloud` is logged in.
+    """
+
+    def __init__(self, quota_project_id: Optional[str] = None) -> None:
+        super().__init__()
+        self._quota_project_id = quota_project_id
+        self.refresh(None)
+
+    @property
+    def quota_project_id(self) -> Optional[str]:
+        return self._quota_project_id
+
+    def refresh(self, request: object) -> None:  # noqa: ARG002
+        gcloud_bin = shutil.which("gcloud")
+        if not gcloud_bin:
+            raise RefreshError("gcloud CLI not found on PATH.")
+        proc = subprocess.run(
+            [gcloud_bin, "auth", "print-access-token", "--quiet"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        token = (proc.stdout or "").strip()
+        if proc.returncode != 0 or not token:
+            stderr = (proc.stderr or "").strip()
+            raise RefreshError(
+                f"Failed to obtain access token from gcloud CLI: {stderr or 'no token returned'}"
+            )
+        self.token = token
+        # Cache token for 45 minutes before automatically refreshing via gcloud
+        self.expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=45)
+
+
+def _resolve_vertex_credentials(project_id: Optional[str]) -> Optional[GoogleAuthCredentials]:
+    """Resolves Vertex AI credentials, falling back to `gcloud auth print-access-token` in Cloud Shell."""
+    is_cloud_shell = (
+        os.environ.get("CLOUD_SHELL", "").lower() == "true"
+        or bool(os.environ.get("DEVSHELL_PROJECT_ID"))
+    )
+    if is_cloud_shell:
+        try:
+            return _GcloudCLICredentials(quota_project_id=project_id)
+        except Exception:
+            pass
+
+    try:
+        creds, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            quota_project_id=project_id,
+        )
+        if not creds.valid:
+            import google.auth.transport.requests
+
+            creds.refresh(google.auth.transport.requests.Request())
+        return creds
+    except (DefaultCredentialsError, RefreshError, Exception) as exc:
+        # Fallback for Cloud Shell metadata server (`missing 'email' field`) or `gcloud auth login` without ADC file
+        if "email" in str(exc).lower() or shutil.which("gcloud"):
+            try:
+                return _GcloudCLICredentials(quota_project_id=project_id)
+            except Exception:
+                pass
+        return None
+
+
 def create_genai_client(config: LLMConnectionConfig) -> genai.Client:
     """Instantiates the official `google.genai.Client` for the resolved connection config."""
     if config.auth_mode == "api_key":
         return genai.Client(api_key=config.api_key)
+    creds = _resolve_vertex_credentials(config.project_id)
     return genai.Client(
         vertexai=True,
         project=config.project_id,
         location=config.location,
+        credentials=creds,
     )
+
