@@ -80,7 +80,7 @@ def doctor(
         help="Google Cloud Project ID for Vertex AI ADC mode.",
     ),
     location: str = typer.Option(
-        "us-central1",
+        "global",
         "--location",
         help="Google Cloud region for Vertex AI endpoint.",
     ),
@@ -211,7 +211,7 @@ def ask(
     prompt: str = typer.Argument(..., help="Question or Terraform generation task for the AI Agent."),
     auth_mode: str = typer.Option("auto", "--auth-mode", help="'auto', 'vertex', or 'api_key'."),
     project_id: Optional[str] = typer.Option(None, "--project-id", help="GCP project ID for Vertex AI mode."),
-    location: str = typer.Option("us-central1", "--location", help="GCP region for Vertex AI."),
+    location: str = typer.Option("global", "--location", help="GCP region for Vertex AI."),
     model: str = typer.Option(DEFAULT_MODEL, "--model", help="Gemini model ID."),
 ) -> None:
     """Sends a single prompt to the LLM Architect Agent and displays the live tool trace + answer."""
@@ -239,7 +239,7 @@ def ask(
 def chat(
     auth_mode: str = typer.Option("auto", "--auth-mode", help="'auto', 'vertex', or 'api_key'."),
     project_id: Optional[str] = typer.Option(None, "--project-id", help="GCP project ID for Vertex AI mode."),
-    location: str = typer.Option("us-central1", "--location", help="GCP region for Vertex AI."),
+    location: str = typer.Option("global", "--location", help="GCP region for Vertex AI."),
     model: str = typer.Option(DEFAULT_MODEL, "--model", help="Gemini model ID."),
 ) -> None:
     """Starts an interactive multi-turn terminal chat session with the ODB@GCP AI Architect Agent."""

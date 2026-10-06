@@ -88,7 +88,7 @@ def main() -> None:
             )
             location = st.text_input(
                 "Vertex AI Region",
-                value=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                value=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
             )
             api_key = ""
         else:
@@ -101,7 +101,7 @@ def main() -> None:
                 help="If left blank, reads GEMINI_API_KEY from environment.",
             )
             project_id = default_gcp_project
-            location = "us-central1"
+            location = "global"
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -317,7 +317,7 @@ def main() -> None:
 
             # 3. Export your project ID and run the agent
             export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
-            export GOOGLE_CLOUD_LOCATION="us-central1"
+            export GOOGLE_CLOUD_LOCATION="global"
             odb-ai-agent doctor --ping-llm
             odb-ai-agent chat
             ```

@@ -40,7 +40,7 @@ class LLMConnectionConfig:
     auth_mode: Literal["vertex", "api_key"]
     model: str = DEFAULT_MODEL
     project_id: Optional[str] = None
-    location: str = "us-central1"
+    location: str = "global"
     api_key: Optional[str] = None
 
     @property
@@ -140,7 +140,7 @@ def resolve_llm_config(
     ).strip()
 
     resolved_location = validate_gcp_location(
-        location or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        location or os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
     )
 
     if effective_mode == "api_key":

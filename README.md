@@ -49,7 +49,7 @@ gcloud services enable aiplatform.googleapis.com --project=YOUR_GCP_PROJECT_ID
 # 3. Export your project settings
 export ODB_AGENT_AUTH_MODE="vertex"
 export GOOGLE_CLOUD_PROJECT="YOUR_GCP_PROJECT_ID"
-export GOOGLE_CLOUD_LOCATION="us-central1"
+export GOOGLE_CLOUD_LOCATION="global"
 ```
 
 ### Option B: Gemini Developer API Key (Fastest for Local Evaluation)

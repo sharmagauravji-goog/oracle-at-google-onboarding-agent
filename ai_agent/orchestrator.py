@@ -154,7 +154,11 @@ def test_llm_connection(config: LLMConnectionConfig) -> dict[str, Any]:
         resp = client.models.generate_content(
             model=config.model,
             contents="Reply with the exact word READY if you can read this.",
-            config=types.GenerateContentConfig(temperature=0.0, max_output_tokens=16),
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                max_output_tokens=16,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            ),
         )
         latency_ms = round((time.perf_counter() - start) * 1000, 1)
         return {
