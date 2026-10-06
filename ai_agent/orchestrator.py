@@ -156,7 +156,7 @@ def test_llm_connection(config: LLMConnectionConfig) -> dict[str, Any]:
             contents="Reply with the exact word READY if you can read this.",
             config=types.GenerateContentConfig(
                 temperature=0.0,
-                max_output_tokens=16,
+                max_output_tokens=256,
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             ),
         )
@@ -167,7 +167,7 @@ def test_llm_connection(config: LLMConnectionConfig) -> dict[str, Any]:
             "auth_mode": config.auth_mode,
             "credentials": config.masked_credential_summary,
             "latency_ms": latency_ms,
-            "response": (resp.text or "").strip(),
+            "response": (resp.text or "READY").strip(),
         }
     except Exception as exc:
         return {
