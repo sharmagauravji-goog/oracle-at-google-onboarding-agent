@@ -22,12 +22,24 @@ def test_mask_secret_never_exposes_plaintext() -> None:
     assert "1234567890" not in masked
 
 
-def test_normalize_model_upgrades_legacy_models() -> None:
+def test_normalize_model_supports_env_configurable_and_custom_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ODB_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
     assert normalize_model_name(None) == DEFAULT_MODEL
-    assert normalize_model_name("gemini-2.5-flash") == "gemini-3.8-flash"
     assert normalize_model_name("gemini-2.0-flash") == "gemini-3.8-flash"
     assert normalize_model_name("gemini-1.5-pro") == "gemini-3.8-flash"
+    # Customers can configure current or future model IDs without being locked out
+    assert normalize_model_name("gemini-2.5-flash") == "gemini-2.5-flash"
     assert normalize_model_name("gemini-3.1-pro-preview") == "gemini-3.1-pro-preview"
+    assert normalize_model_name("gemini-4.0-ultra-exp") == "gemini-4.0-ultra-exp"
+
+    # Verify ODB_AGENT_MODEL and GEMINI_MODEL environment variables are respected
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-pro")
+    assert normalize_model_name(None) == "gemini-2.5-pro"
+    monkeypatch.setenv("ODB_AGENT_MODEL", "gemini-custom-enterprise-v1")
+    assert normalize_model_name(None) == "gemini-custom-enterprise-v1"
 
 
 def test_validate_gcp_project_id_and_location() -> None:
@@ -45,6 +57,7 @@ def test_resolve_llm_config_vertex_and_api_key(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
     monkeypatch.delenv("ODB_AGENT_AUTH_MODE", raising=False)
+    monkeypatch.setenv("ODB_AGENT_MODEL", "gemini-2.5-flash")
 
     vertex_cfg = resolve_llm_config(
         auth_mode="vertex",
@@ -54,6 +67,7 @@ def test_resolve_llm_config_vertex_and_api_key(monkeypatch: pytest.MonkeyPatch) 
     assert vertex_cfg.auth_mode == "vertex"
     assert vertex_cfg.project_id == "odb-enterprise-prod-01"
     assert vertex_cfg.location == "us-east4"
+    assert vertex_cfg.model == "gemini-2.5-flash"
     assert "odb-enterprise-prod-01" in vertex_cfg.masked_credential_summary
 
     key_cfg = resolve_llm_config(

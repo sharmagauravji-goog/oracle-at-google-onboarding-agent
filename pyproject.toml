@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oracle-google-ai-agent"
-version = "0.1.0"
-description = "LLM-Powered AI Architect Agent for Oracle Database@Google Cloud (Live Docs, ODB API & Terraform Provider Discovery)"
+version = "0.2.0"
+description = "Oracle@Google Onboarding Agent — End-to-End Onboarding, Architecture, Diagrams, Terraform & MCP Server for Oracle Database@Google Cloud"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
@@ -27,8 +27,11 @@ dev = [
 ]
 
 [project.scripts]
+odb-onboarding-agent = "ai_agent.cli:app"
 odb-ai-agent = "ai_agent.cli:app"
+odb-mcp-server = "ai_agent.mcp_server:run_mcp_stdio_server"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ai_agent*"]
+

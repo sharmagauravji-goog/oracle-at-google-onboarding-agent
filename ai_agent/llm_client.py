@@ -31,6 +31,7 @@ SUPPORTED_MODELS: tuple[str, ...] = (
 
 _PROJECT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9\-]{4,28}[a-z0-9]$")
 _LOCATION_PATTERN = re.compile(r"^[a-z0-9\-]{2,32}$")
+_SAFE_MODEL_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9.\-_/:]{2,127}$")
 
 
 @dataclass(frozen=True)
@@ -62,15 +63,21 @@ def mask_secret(secret: str) -> str:
 
 
 def normalize_model_name(model: Optional[str]) -> str:
-    """Normalizes model names and upgrades deprecated 1.5/2.0/2.5 models to gemini-3.8-flash."""
-    if not model or not model.strip():
+    """Normalizes model names, upgrades retired 1.5/2.0 models, and allows any valid custom/future model ID via env var."""
+    raw = (
+        model
+        or os.environ.get("ODB_AGENT_MODEL")
+        or os.environ.get("GEMINI_MODEL")
+        or ""
+    ).strip()
+    if not raw:
         return DEFAULT_MODEL
-    cleaned = model.strip()
-    if cleaned.startswith(("gemini-1.5", "gemini-2.0", "gemini-2.5")):
+    if raw.startswith(("gemini-1.5", "gemini-2.0")):
         return DEFAULT_MODEL
-    if cleaned in SUPPORTED_MODELS:
-        return cleaned
+    if _SAFE_MODEL_ID_PATTERN.match(raw):
+        return raw
     return DEFAULT_MODEL
+
 
 
 def validate_gcp_project_id(project_id: str) -> str:

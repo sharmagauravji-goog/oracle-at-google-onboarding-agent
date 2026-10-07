@@ -420,15 +420,18 @@ def _parse_json_or_extract(raw_text: str) -> dict[str, Any] | None:
     return None
 
 
-def validate_terraform_hcl(files_json: str) -> str:
+def validate_terraform_hcl(files_json: str, fast_mode: bool = False) -> str:
     """Validates generated `.tf` files using deterministic anti-hallucination checks AND `terraform validate -json`.
 
     Args:
         files_json: A JSON string mapping filenames (e.g. `{"main.tf": "...", "variables.tf": "..."}`)
             to their HCL content.
+        fast_mode: When True (or when `ODB_FAST_VALIDATION=1` is set in MCP mode), runs deterministic
+            schema/hallucination checks plus `terraform fmt` syntax check in <50ms without downloading
+            provider plugins over the network, preventing IDE client timeouts.
 
     Returns:
-        JSON string reporting whether anti-hallucination rules and `terraform validate` passed,
+        JSON string reporting whether anti-hallucination rules and Terraform syntax/schema checks passed,
         or returning exact compiler diagnostics for self-healing.
     """
     try:
@@ -455,11 +458,13 @@ def validate_terraform_hcl(files_json: str) -> str:
             indent=2,
         )
 
+    use_fast = fast_mode or os.environ.get("ODB_FAST_VALIDATION", "").strip() in ("1", "true", "yes")
     tf_bin = _find_terraform_binary()
     if not tf_bin:
         return json.dumps(
             {
                 "valid": True,
+                "fast_mode": use_fast,
                 "skipped_cli": True,
                 "anti_hallucination_guard": "PASSED",
                 "message": "Deterministic anti-hallucination checks passed (Terraform CLI binary not on PATH).",
@@ -484,7 +489,7 @@ def validate_terraform_hcl(files_json: str) -> str:
             return json.dumps({"valid": False, "error": "No valid .tf files provided."})
 
         try:
-            # Step 2: Verify HCL syntax using `terraform fmt` (runs inside the signed terraform binary)
+            # Step 2: Verify HCL syntax using `terraform fmt` (runs inside the signed terraform binary in <50ms)
             fmt_proc = subprocess.run(
                 [tf_bin, "fmt", "-write=false", "-no-color"],
                 cwd=str(sandbox_root),
@@ -500,6 +505,18 @@ def validate_terraform_hcl(files_json: str) -> str:
                         "stage": "terraform_hcl_syntax_check",
                         "stderr": fmt_proc.stderr[-2000:],
                         "stdout": fmt_proc.stdout[-2000:],
+                    },
+                    indent=2,
+                )
+
+            if use_fast:
+                return json.dumps(
+                    {
+                        "valid": True,
+                        "fast_mode": True,
+                        "anti_hallucination_guard": "PASSED",
+                        "hcl_syntax_check": "PASSED",
+                        "mode": "fast_schema_and_syntax",
                     },
                     indent=2,
                 )

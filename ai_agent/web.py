@@ -1,4 +1,4 @@
-"""Streamlit Web Studio for the Oracle Database@Google Cloud LLM Architect Agent.
+"""Streamlit Web Studio for the Oracle@Google Onboarding Agent.
 
 Run locally bound to localhost:
     streamlit run ai_agent/web.py --server.address=127.0.0.1 --server.port=8502
@@ -12,22 +12,31 @@ import os
 import streamlit as st
 
 from ai_agent.llm_client import (
+    DEFAULT_MODEL,
     SUPPORTED_MODELS,
     detect_gcloud_default_project,
     resolve_llm_config,
 )
 from ai_agent.orchestrator import (
-    ODBArchitectAgent,
+    ODBOnboardingAgent,
     test_llm_connection,
 )
 from ai_agent.tools.day2_maintenance import (
     analyze_day2_terraform_diff,
     inspect_existing_terraform_workspace,
 )
+from ai_agent.tools.diagram_generator import (
+    SUPPORTED_DIAGRAM_TYPES,
+    generate_odb_architecture_diagram,
+)
 from ai_agent.tools.odb_live_discovery import (
     check_live_vpc_subnet_overlaps,
-    discover_live_odb_regions_and_zones,
     discover_live_odb_shapes_and_versions,
+)
+from ai_agent.tools.onboarding_knowledge import (
+    SUPPORTED_ONBOARDING_TOPICS,
+    evaluate_customer_onboarding_readiness,
+    get_odb_onboarding_and_architecture_guide,
 )
 from ai_agent.tools.terraform_registry import (
     EXACT_ODB_RESOURCE_SCHEMAS,
@@ -47,15 +56,16 @@ def _init_session_state() -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="ODB@GCP AI Architect Agent",
+        page_title="Oracle@Google Onboarding Agent",
         page_icon=":material/smart_toy:",
         layout="wide",
     )
     _init_session_state()
 
-    st.title("Oracle Database@Google Cloud — AI Architect Agent")
+    st.title("Oracle@Google Onboarding Agent")
     st.caption(
-        "Production Terraform Generator & Day-2 Maintenance Agent with 5-Layer Anti-Hallucination Guardrails."
+        "End-to-End Onboarding Lifecycle, ODB Networks & Architecture Diagrams, Production Terraform Code Generator, "
+        "Day-2 Maintenance Guard, and IDE MCP Server — Powered by 5-Layer Anti-Hallucination Guardrails."
     )
 
     with st.sidebar:
@@ -68,11 +78,26 @@ def main() -> None:
                 "with Vertex AI (zero API keys needed). For quick local testing, use a Gemini API Key."
             ),
         )
-        selected_model = st.selectbox(
-            "Gemini Model",
-            options=list(SUPPORTED_MODELS),
-            index=0,
+        env_model = (
+            os.environ.get("ODB_AGENT_MODEL")
+            or os.environ.get("GEMINI_MODEL")
+            or DEFAULT_MODEL
         )
+        preset_options = list(SUPPORTED_MODELS) + ["Custom Model ID (Env / Override)"]
+        selected_preset = st.selectbox(
+            "Gemini Model Preset",
+            options=preset_options,
+            index=preset_options.index(env_model) if env_model in SUPPORTED_MODELS else 0,
+            help="Model IDs can also be configured via ODB_AGENT_MODEL or GEMINI_MODEL environment variables.",
+        )
+        if selected_preset == "Custom Model ID (Env / Override)":
+            selected_model = st.text_input(
+                "Custom Gemini Model ID",
+                value=env_model,
+                placeholder="gemini-2.5-flash",
+            )
+        else:
+            selected_model = selected_preset
 
         default_gcp_project = (
             os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -138,27 +163,46 @@ def main() -> None:
         st.divider()
         st.subheader("5-Layer Anti-Hallucination Guardrails")
         st.markdown(
-            "1. **Golden Baseline (`generate_golden_odb_terraform`)**\n"
-            "2. **Exact Provider Schema (`EXACT_ODB_RESOURCE_SCHEMAS`)**\n"
-            "3. **CIDR `/28` + Secret Leak Guard**\n"
-            "4. **Compiler Auto-Repair (`terraform validate`)**\n"
-            "5. **Day-2 `ForceNew` Destroy Protection**"
+            "1. **Onboarding & Architecture Knowledge Base**\n"
+            "2. **Syntax-Verified Mermaid & ASCII Diagrams**\n"
+            "3. **Golden Terraform + Exact Schema Grounding**\n"
+            "4. **CIDR `/28`, Secret & Workspace Path Containment**\n"
+            "5. **Compiler Auto-Repair + Day-2 `ForceNew` Guard**"
         )
 
-    tab_chat, tab_day2, tab_explorer, tab_guide = st.tabs(
+    tab_chat, tab_onboarding, tab_day2, tab_explorer, tab_mcp = st.tabs(
         [
-            "AI Architect Agent (Day-1 & Day-2)",
+            "Oracle@Google Onboarding Agent Chat",
+            "Onboarding Lifecycle, Architecture & Diagrams",
             "Day-2 Maintenance & ForceNew Guard",
             "Live Terraform & GCP VPC Inspector",
-            "Customer Setup & Cloud Shell Guide",
+            "IDE MCP Server & Cloud Shell Setup",
         ]
     )
 
     with tab_chat:
-        st.markdown("##### Quick Production Workflows")
-        q_cols = st.columns(3)
+        st.markdown("##### Quick Onboarding, Architecture & Terraform Workflows")
+        q_cols = st.columns(4)
         prompt_to_run: str | None = None
         if q_cols[0].button(
+            "Onboarding: End-to-End Flow + Diagram",
+            use_container_width=True,
+        ):
+            prompt_to_run = (
+                "Walk me through the complete Oracle@Google onboarding process — including Prerequisites, "
+                "Marketplace Private Offer vs Pay-As-You-Go, OCI Account Linking, and My Oracle Support (CSI) "
+                "registration — and generate an end-to-end onboarding diagram."
+            )
+        if q_cols[1].button(
+            "Networking: ODB Network Topologies + Diagram",
+            use_container_width=True,
+        ):
+            prompt_to_run = (
+                "Explain ODB Networks (`google_oracle_database_odb_network`), `CLIENT_SUBNET` vs `BACKUP_SUBNET` "
+                "sizing rules, and the 3 Enterprise Networking Topologies (Standalone VPC, Shared VPC, and "
+                "Hub-and-Spoke with NCC/Interconnect), and generate a Hub-and-Spoke networking diagram."
+            )
+        if q_cols[2].button(
             "Day-1: Generate Golden Autonomous DB 23ai Terraform",
             use_container_width=True,
         ):
@@ -168,22 +212,13 @@ def main() -> None:
                 "zone 'us-east4-b-r1', VPC CIDR 10.10.0.0/16, and Client Subnet 10.20.1.0/24. "
                 "Validate the HCL and save it to ./output/adb-prod."
             )
-        if q_cols[1].button(
-            "Day-1: Generate Golden Exascale Cluster Terraform",
+        if q_cols[3].button(
+            "Day-2: Backup, CMEK & Safe ECPU Scaling",
             use_container_width=True,
         ):
             prompt_to_run = (
-                f"Generate a Golden Terraform bundle for an Exadata Exascale cluster in project "
-                f"'{project_id or 'my-odb-project-01'}' in us-east4 (zone us-east4-b-r1) with Client Subnet "
-                "10.20.1.0/24 and Backup Subnet 10.20.2.0/24, and validate the generated HCL."
-            )
-        if q_cols[2].button(
-            "Day-2: Inspect Workspace & Safely Scale ECPUs",
-            use_container_width=True,
-        ):
-            prompt_to_run = (
-                "Inspect the existing Terraform workspace in ./output, check if deletion_protection is enabled, "
-                "and show me how to safely scale compute_count in-place without triggering a ForceNew replacement."
+                "Explain Backup & Recovery and CMEK encryption (`gcp-sa-oracledatabase` service agent IAM) "
+                "for Oracle@Google, then inspect ./output and show how to safely scale compute_count in-place."
             )
 
         for msg in st.session_state.messages:
@@ -202,7 +237,7 @@ def main() -> None:
                 st.markdown(msg["content"])
 
         chat_input = st.chat_input(
-            "Ask to generate Day-1 Terraform, inspect live schemas, or perform safe Day-2 maintenance..."
+            "Ask about Prerequisites, Marketplace Private Offer/PAYG, OCI Linking, MOS Support, ODB Networks, Backup, CMEK, Monitoring, Diagrams, or Terraform..."
         )
         active_prompt = prompt_to_run or chat_input
 
@@ -227,10 +262,10 @@ def main() -> None:
                         st.session_state.agent_instance is None
                         or st.session_state.agent_config_key != config_fingerprint
                     ):
-                        st.session_state.agent_instance = ODBArchitectAgent(cfg)
+                        st.session_state.agent_instance = ODBOnboardingAgent(cfg)
                         st.session_state.agent_config_key = config_fingerprint
 
-                    with st.spinner("Agent reasoning, running live tools & verifying HCL guardrails..."):
+                    with st.spinner("Oracle@Google Onboarding Agent reasoning, running live tools & verifying guardrails..."):
                         turn = st.session_state.agent_instance.send_message(active_prompt)
 
                     serialized_traces = [
@@ -265,12 +300,81 @@ def main() -> None:
                 except Exception as exc:
                     st.error(f"LLM Agent Error: {exc}")
 
+    with tab_onboarding:
+        st.subheader("Grounded Onboarding Lifecycle, Deep Architecture & Diagram Generator")
+        col_kb, col_diag = st.columns(2)
+        with col_kb:
+            st.markdown("#### 1. Verified Onboarding & Architecture Knowledge Base")
+            selected_topic = st.selectbox(
+                "Select Onboarding or Architecture Domain",
+                options=list(SUPPORTED_ONBOARDING_TOPICS),
+                index=0,
+            )
+            if st.button("Load Verified Domain Guide", use_container_width=True):
+                kb_payload = json.loads(get_odb_onboarding_and_architecture_guide(selected_topic))
+                st.json(kb_payload)
+
+            st.markdown("#### 2. Interactive Onboarding Readiness Evaluator")
+            r_c1, r_c2 = st.columns(2)
+            with r_c1:
+                r_billing = st.checkbox("Active GCP Billing + Org Admin", value=True)
+                r_api = st.checkbox("oracledatabase.googleapis.com Enabled", value=True)
+                r_mkt = st.selectbox("Marketplace Mode", ["private_offer", "payg", "none"])
+                r_oci = st.checkbox("OCI Tenancy Linked", value=True)
+            with r_c2:
+                r_mos = st.checkbox("MOS Linked with CSI", value=False)
+                r_top = st.selectbox("Networking Topology", ["standalone_vpc", "shared_vpc", "hub_and_spoke_ncc"])
+                r_enc = st.selectbox("Encryption Mode", ["google_managed", "gcp_cmek", "oci_vault"])
+                r_wkl = st.selectbox("Target Workload", ["adb", "exadata_dedicated", "exascale", "basedb"])
+            if st.button("Evaluate Onboarding Readiness Score", use_container_width=True):
+                readiness_json = evaluate_customer_onboarding_readiness(
+                    has_gcp_billing_and_org_admin=r_billing,
+                    has_enabled_oracledatabase_api=r_api,
+                    marketplace_procurement_mode=r_mkt,
+                    has_linked_oci_tenancy=r_oci,
+                    has_mos_account_and_csi=r_mos,
+                    networking_topology=r_top,
+                    encryption_mode=r_enc,
+                    workload_type=r_wkl,
+                )
+                st.json(json.loads(readiness_json))
+
+        with col_diag:
+            st.markdown("#### 3. Grounded Architecture & Onboarding Diagram Generator")
+            selected_diag = st.selectbox(
+                "Select Diagram Type",
+                options=list(SUPPORTED_DIAGRAM_TYPES),
+                index=0,
+            )
+            save_diag_path = st.text_input(
+                "Optional Workspace Output Path",
+                value=f"./output/diagrams/{selected_diag}.md",
+            )
+            if st.button("Generate Grounded Mermaid & ASCII Diagram", use_container_width=True):
+                diag_res = json.loads(
+                    generate_odb_architecture_diagram(
+                        diagram_type=selected_diag,
+                        output_format="both",
+                        save_to_file=save_diag_path,
+                    )
+                )
+                if diag_res.get("valid"):
+                    st.success(f"{diag_res.get('title')} — {diag_res.get('summary')}")
+                    if diag_res.get("saved_file"):
+                        st.caption(f"Saved inside workspace: `{diag_res['saved_file']}`")
+                    st.markdown("**Mermaid Diagram Preview:**")
+                    st.markdown(diag_res.get("mermaid_markdown", ""))
+                    st.markdown("**ASCII Terminal Reference Diagram:**")
+                    st.code(diag_res.get("ascii_diagram", ""), language="text")
+                else:
+                    st.error(diag_res.get("error", "Failed to generate diagram"))
+
     with tab_day2:
         st.subheader("Day-2 Maintenance & Destructive Change (`ForceNew`) Guard")
         col_w, col_d = st.columns(2)
         with col_w:
-            st.markdown("#### 1. Inspect Existing Terraform Workspace")
-            ws_dir = st.text_input("Workspace Path", value="./output")
+            st.markdown("#### 1. Inspect Existing Terraform Workspace (Workspace-Sandboxed)")
+            ws_dir = st.text_input("Workspace Path (inside active project root)", value="./output")
             if st.button("Audit Workspace Resources & Deletion Protection"):
                 st.code(inspect_existing_terraform_workspace(ws_dir), language="json")
 
@@ -339,32 +443,57 @@ def main() -> None:
                     language="json",
                 )
 
-    with tab_guide:
-        st.subheader("Customer Deployment & Zero-Setup Cloud Shell Guide")
+    with tab_mcp:
+        st.subheader("IDE MCP Server Integration (VS Code, Cursor, Claude Desktop, Antigravity) & Cloud Shell Setup")
         st.markdown(
             """
-            ### Recommended Path 1: Google Cloud Shell (Zero Local Setup, Zero API Keys)
-            Google Cloud Shell comes pre-installed with `gcloud` (already logged in), `terraform`, `python3`, and `git`.
-            ```bash
-            git clone <YOUR_REPO_URL>
-            cd oracle-google-ai-agent
-            python3 -m venv .venv && source .venv/bin/activate
-            pip install -r requirements.txt && pip install -e .
+            ### 1. Use via Model Context Protocol (`stdio` MCP Server) in Your IDE
+            Customers can attach the **Oracle@Google Onboarding Agent** directly to **VS Code (GitHub Copilot / Cline / Continue)**, **Cursor**, **Claude Desktop**, **Gemini CLI**, or **Antigravity IDE** using the built-in `odb-mcp-server` (or `odb-onboarding-agent mcp-serve`) entrypoint.
 
-            # Verify Vertex AI ADC connection (uses active Cloud Shell project)
-            odb-ai-agent doctor --ping-llm
+            #### Built-In MCP Safety & Reliability Guardrails
+            - **Never Exposes `terraform apply` or `terraform destroy`**: Only read-only onboarding guides, diagram generation, golden HCL generation, fast schema validation, and non-destructive Day-2 workspace inspection are exposed.
+            - **Strict `stdio` Stream Isolation**: All logs, warnings, and subprocess diagnostics are redirected to `stderr` so `stdout` carries exclusively JSON-RPC 2.0 protocol frames.
+            - **Workspace Path Containment**: `generate_golden_terraform` and `inspect_day2_workspace` strictly enforce that all paths resolve inside `ODB_WORKSPACE_ROOT` (rejecting `../` traversal or `/etc`, `/tmp`, `~/.ssh`).
+            - **Fast IDE Timeout Protection (`<50ms`)**: MCP tools run in fast validation mode and return concise summaries pointing to `./output/<bundle>` instead of blocking on multi-hundred-MB `terraform init` downloads.
+            - **Configurable Model IDs**: Set `ODB_AGENT_MODEL` or `GEMINI_MODEL` in your environment so you are never locked into a retired preview model ID.
 
-            # Generate a Golden Day-1 Terraform bundle directly or launch interactive chat
-            odb-ai-agent generate-golden --project-id $(gcloud config get-value project) --workload adb
-            odb-ai-agent chat
+            #### VS Code (`.vscode/mcp.json`) / Cursor (`.cursor/mcp.json`) Configuration
+            ```json
+            {
+              "servers": {
+                "oracle-google-onboarding-agent": {
+                  "type": "stdio",
+                  "command": "/ABSOLUTE/PATH/TO/oracle-google-ai-agent/.venv/bin/odb-mcp-server",
+                  "args": [],
+                  "env": {
+                    "ODB_WORKSPACE_ROOT": "${workspaceFolder}",
+                    "ODB_AGENT_MODEL": "gemini-3.8-flash",
+                    "ODB_FAST_VALIDATION": "1"
+                  }
+                }
+              }
+            }
             ```
 
             ---
 
-            ### Recommended Path 2: Docker Container (For Corporate Laptops / Jump Hosts)
+            ### 2. Google Cloud Shell (Zero Local Setup, Zero API Keys)
             ```bash
-            docker compose up --build odb-ai-agent-web
-            # Open http://127.0.0.1:8502
+            git clone https://github.com/sharmagauravji-goog/oracle-google-ai-agent.git
+            cd oracle-google-ai-agent
+            python3 -m venv .venv && source .venv/bin/activate
+            pip install -r requirements.txt && pip install -e .
+
+            # 1. Verify environment & Vertex AI ADC connection
+            odb-onboarding-agent doctor --ping-llm
+
+            # 2. Explore Onboarding Lifecycle & Generate Architecture Diagrams
+            odb-onboarding-agent onboarding-guide --topic overview
+            odb-onboarding-agent diagram --type end_to_end_onboarding --save-to ./output/diagrams/onboarding.md
+
+            # 3. Generate Golden Day-1 Terraform or launch interactive Onboarding Chat
+            odb-onboarding-agent generate-golden --project-id "$GOOGLE_CLOUD_PROJECT" --workload adb
+            odb-onboarding-agent chat
             ```
             """
         )

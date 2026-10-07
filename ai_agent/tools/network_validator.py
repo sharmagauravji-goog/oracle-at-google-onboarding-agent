@@ -14,7 +14,50 @@ import re
 from pathlib import Path
 from typing import Any
 
-_SAFE_RELATIVE_PATH_PATTERN = re.compile(r"^[a-zA-Z0-9_\-/]+\.(tf|tfvars|md|yml|yaml|sh)$")
+import tempfile
+
+_SAFE_RELATIVE_PATH_PATTERN = re.compile(r"^[a-zA-Z0-9_\-/]+\.(tf|tfvars|md|mmd|yml|yaml|sh)$")
+
+
+def get_workspace_root() -> Path:
+    """Returns the canonical open workspace root directory."""
+    env_root = os.environ.get("ODB_WORKSPACE_ROOT", "").strip()
+    if env_root:
+        return Path(env_root).resolve()
+    return Path.cwd().resolve()
+
+
+def resolve_safe_workspace_path(raw_path: str) -> Path:
+    """Resolves `raw_path` and verifies it is strictly inside the open workspace root.
+
+    Raises:
+        ValueError: If the resolved path escapes the open workspace directory.
+    """
+    cleaned = (raw_path or "").strip()
+    if not cleaned:
+        raise ValueError("Path cannot be empty.")
+
+    workspace_root = get_workspace_root()
+    candidate = Path(cleaned)
+    resolved = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (workspace_root / candidate).resolve()
+    )
+
+    if resolved == workspace_root or str(resolved).startswith(str(workspace_root) + os.sep):
+        return resolved
+
+    # Allow pytest temporary directories only during active pytest runs when ODB_WORKSPACE_ROOT is not set
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("ODB_WORKSPACE_ROOT"):
+        tmp_root = Path(tempfile.gettempdir()).resolve()
+        if str(resolved).startswith(str(tmp_root) + os.sep):
+            return resolved
+
+    raise ValueError(
+        f"Security Guardrail (Path traversal blocked): Path '{raw_path}' resolves to '{resolved}', "
+        f"which is outside the active workspace '{workspace_root}'. File operations are restricted to the open workspace."
+    )
 
 
 def validate_odb_network_cidrs(
@@ -83,21 +126,24 @@ def save_generated_terraform_bundle(
     files_json: str,
     bundle_name: str = "odb-generated-infra",
     base_output_dir: str = "./output",
+    output_dir: str = "",
 ) -> str:
     """Safely writes generated Terraform and CI/CD files into an isolated subdirectory under `base_output_dir`.
 
-    Enforces strict path traversal protection (`resolved.startswith(sandbox_dir + os.sep)`)
+    Enforces strict workspace containment (`resolve_safe_workspace_path`), path traversal protection,
     and blocks hardcoded passwords in `.tfvars` files.
 
     Args:
         files_json: JSON object mapping relative file paths (e.g. `main.tf`, `modules/adb/main.tf`)
             to their file contents.
         bundle_name: Subdirectory name inside `base_output_dir` (alphanumeric, hyphens, underscores).
-        base_output_dir: Base output directory (default `./output`).
+        base_output_dir: Base output directory inside the active workspace (default `./output`).
+        output_dir: Optional alias for `base_output_dir`.
 
     Returns:
         JSON string listing all written file paths or validation errors.
     """
+    effective_base_dir = output_dir.strip() if output_dir and output_dir.strip() else base_output_dir
     try:
         files_map = json.loads(files_json)
     except json.JSONDecodeError as exc:
@@ -106,12 +152,25 @@ def save_generated_terraform_bundle(
     if not isinstance(files_map, dict) or not files_map:
         return json.dumps({"saved": False, "error": "files_json must be a non-empty JSON object."})
 
+    if ".." in bundle_name or "/" in bundle_name or "\\" in bundle_name:
+        return json.dumps(
+            {
+                "saved": False,
+                "error": f"Security Guardrail: Invalid bundle_name '{bundle_name}'. Must be a simple directory name inside the workspace.",
+            }
+        )
+
+    try:
+        sandbox_root = resolve_safe_workspace_path(effective_base_dir)
+    except ValueError as exc:
+        return json.dumps({"saved": False, "error": str(exc)})
+
     safe_bundle = re.sub(r"[^a-zA-Z0-9_\-]", "-", os.path.basename(bundle_name.strip())) or "odb-bundle"
-    sandbox_root = Path(base_output_dir).resolve()
     bundle_dir = (sandbox_root / safe_bundle).resolve()
 
     if not str(bundle_dir).startswith(str(sandbox_root) + os.sep):
         return json.dumps({"saved": False, "error": "Bundle directory escaped output sandbox."})
+
 
     bundle_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []

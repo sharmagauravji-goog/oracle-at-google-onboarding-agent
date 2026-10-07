@@ -149,17 +149,34 @@ def _extract_resources_from_hcl(hcl_text: str) -> dict[str, dict[str, Any]]:
     return extracted
 
 
+from ai_agent.tools.network_validator import resolve_safe_workspace_path
+
+
 def inspect_existing_terraform_workspace(workspace_dir: str = "./output") -> str:
-    """Inspects an existing Terraform directory to inventory ODB@GCP resources for Day-2 maintenance.
+    """Inspects an existing Terraform directory inside the active workspace to inventory ODB@GCP resources for Day-2 maintenance.
+
+    Enforces strict workspace path containment (`resolve_safe_workspace_path`): paths outside
+    the open workspace directory are rejected.
 
     Args:
-        workspace_dir: Path to the directory containing existing `.tf` files.
+        workspace_dir: Path to the directory containing existing `.tf` files (must be inside the active workspace).
 
     Returns:
         JSON string listing discovered `.tf` files, ODB resources, current attributes,
         `deletion_protection` posture, and safe in-place Day-2 scaling options.
     """
-    target_dir = Path(workspace_dir).resolve()
+    try:
+        target_dir = resolve_safe_workspace_path(workspace_dir)
+    except ValueError as exc:
+        return json.dumps(
+            {
+                "valid": False,
+                "exists": False,
+                "error": str(exc),
+            },
+            indent=2,
+        )
+
     if not target_dir.exists() or not target_dir.is_dir():
         return json.dumps(
             {
@@ -169,6 +186,7 @@ def inspect_existing_terraform_workspace(workspace_dir: str = "./output") -> str
             },
             indent=2,
         )
+
 
     tf_files: list[str] = []
     resources: dict[str, dict[str, Any]] = {}
