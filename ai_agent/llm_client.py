@@ -99,7 +99,12 @@ def validate_gcp_location(location: str) -> str:
 
 
 def detect_gcloud_default_project() -> Optional[str]:
-    """Safely queries `gcloud config get-value project` if gcloud is installed."""
+    """Safely queries `gcloud config get-value project` (or active project list fallback) if gcloud is installed."""
+    for env_var in ("GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "DEVSHELL_PROJECT_ID", "CLOUDSDK_CORE_PROJECT"):
+        env_val = (os.environ.get(env_var) or "").strip()
+        if env_val and env_val != "(unset)" and _PROJECT_ID_PATTERN.match(env_val):
+            return env_val
+
     gcloud_bin = shutil.which("gcloud")
     if not gcloud_bin:
         return None
@@ -114,6 +119,28 @@ def detect_gcloud_default_project() -> Optional[str]:
         candidate = (proc.stdout or "").strip()
         if candidate and candidate != "(unset)" and _PROJECT_ID_PATTERN.match(candidate):
             return candidate
+
+        # Fallback for fresh Cloud Shell sessions where `gcloud config get-value project` is `(unset)`
+        list_proc = subprocess.run(
+            [
+                gcloud_bin,
+                "projects",
+                "list",
+                "--filter=lifecycleState:ACTIVE",
+                "--format=value(projectId)",
+                "--limit=1",
+                "--quiet",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        first_proj = (list_proc.stdout or "").strip().splitlines()
+        if first_proj:
+            fallback_proj = first_proj[0].strip()
+            if _PROJECT_ID_PATTERN.match(fallback_proj):
+                return fallback_proj
     except (OSError, subprocess.SubprocessError):
         return None
     return None
@@ -142,6 +169,8 @@ def resolve_llm_config(
         project_id
         or os.environ.get("GOOGLE_CLOUD_PROJECT")
         or os.environ.get("GCLOUD_PROJECT")
+        or os.environ.get("DEVSHELL_PROJECT_ID")
+        or os.environ.get("CLOUDSDK_CORE_PROJECT")
         or detect_gcloud_default_project()
         or ""
     ).strip()
