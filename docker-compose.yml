@@ -1,5 +1,5 @@
 services:
-  odb-ai-agent-web:
+  odb-onboarding-agent-web:
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,13 +14,13 @@ services:
     volumes:
       - ./output:/app/output
 
-  odb-ai-agent-cli:
+  odb-onboarding-agent-cli:
     build:
       context: .
       dockerfile: Dockerfile
     profiles:
       - cli
-    entrypoint: ["odb-ai-agent"]
+    entrypoint: ["odb-onboarding-agent"]
     command: ["doctor"]
     environment:
       - ODB_AGENT_AUTH_MODE=${ODB_AGENT_AUTH_MODE:-auto}

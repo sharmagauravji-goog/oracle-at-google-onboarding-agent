@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "oracle-google-ai-agent"
+name = "oracle-at-google-onboarding-agent"
 version = "0.2.0"
 description = "Oracle@Google Onboarding Agent — End-to-End Onboarding, Architecture, Diagrams, Terraform & MCP Server for Oracle Database@Google Cloud"
 readme = "README.md"

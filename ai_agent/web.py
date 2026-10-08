@@ -463,7 +463,7 @@ def main() -> None:
               "servers": {
                 "oracle-google-onboarding-agent": {
                   "type": "stdio",
-                  "command": "/ABSOLUTE/PATH/TO/oracle-google-ai-agent/.venv/bin/odb-mcp-server",
+                  "command": "/ABSOLUTE/PATH/TO/oracle-at-google-onboarding-agent/.venv/bin/odb-mcp-server",
                   "args": [],
                   "env": {
                     "ODB_WORKSPACE_ROOT": "${workspaceFolder}",
@@ -479,8 +479,8 @@ def main() -> None:
 
             ### 2. Google Cloud Shell (Zero Local Setup, Zero API Keys)
             ```bash
-            git clone https://github.com/sharmagauravji-goog/oracle-google-ai-agent.git
-            cd oracle-google-ai-agent
+            git clone https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent.git
+            cd oracle-at-google-onboarding-agent
             python3 -m venv .venv && source .venv/bin/activate
             pip install -r requirements.txt && pip install -e .
 

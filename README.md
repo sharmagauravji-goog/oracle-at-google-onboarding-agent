@@ -1,6 +1,6 @@
-# Oracle@Google Onboarding Agent (`oracle-google-ai-agent`)
+# Oracle@Google Onboarding Agent (`oracle-at-google-onboarding-agent`)
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/sharmagauravji-goog/oracle-google-ai-agent.git&cloudshell_git_branch=main&cloudshell_tutorial=cloudshell_tutorial.md)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent.git&cloudshell_git_branch=main&cloudshell_tutorial=cloudshell_tutorial.md)
 
 An LLM-powered **Oracle@Google Onboarding Agent** built on the official [`google-genai`](https://pypi.org/project/google-genai/) SDK that guides enterprise customers through the **entire Oracle Database@Google Cloud (`oracledatabase.googleapis.com`) onboarding journey**, answers deep architecture questions with anti-hallucination guardrails, generates **Mermaid & ASCII architecture diagrams**, produces **production-ready Day-1 & Day-2 Terraform (`hashicorp/google`)**, and integrates directly into customer IDEs (**VS Code, Cursor, Claude Desktop, Gemini CLI, and Antigravity IDE**) via a built-in **Model Context Protocol (`stdio` MCP) Server**.
 
@@ -61,8 +61,8 @@ Exposes the agent's tools over JSON-RPC 2.0 `stdio` (`odb-mcp-server` or `odb-on
 Click the button above or open directly in Google Cloud Shell:
 
 ```bash
-git clone https://github.com/sharmagauravji-goog/oracle-google-ai-agent.git
-cd oracle-google-ai-agent
+git clone https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent.git
+cd oracle-at-google-onboarding-agent
 ./scripts/cloudshell_quickstart.sh
 ```
 
@@ -109,7 +109,7 @@ Create `.vscode/mcp.json` in your project workspace:
   "servers": {
     "oracle-google-onboarding-agent": {
       "type": "stdio",
-      "command": "/ABSOLUTE/PATH/TO/oracle-google-ai-agent/.venv/bin/odb-mcp-server",
+      "command": "/ABSOLUTE/PATH/TO/oracle-at-google-onboarding-agent/.venv/bin/odb-mcp-server",
       "args": [],
       "env": {
         "ODB_WORKSPACE_ROOT": "${workspaceFolder}",
@@ -126,7 +126,7 @@ Create `.vscode/mcp.json` in your project workspace:
 {
   "mcpServers": {
     "oracle-google-onboarding-agent": {
-      "command": "/ABSOLUTE/PATH/TO/oracle-google-ai-agent/.venv/bin/odb-mcp-server",
+      "command": "/ABSOLUTE/PATH/TO/oracle-at-google-onboarding-agent/.venv/bin/odb-mcp-server",
       "args": [],
       "env": {
         "ODB_WORKSPACE_ROOT": "/ABSOLUTE/PATH/TO/YOUR/TERRAFORM_WORKSPACE",
