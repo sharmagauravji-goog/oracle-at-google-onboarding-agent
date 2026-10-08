@@ -32,28 +32,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("odb_mcp_server")
 
-from ai_agent.llm_client import normalize_model_name
-from ai_agent.tools.day2_maintenance import (
-    analyze_day2_terraform_diff,
-    inspect_existing_terraform_workspace,
-)
-from ai_agent.tools.diagram_generator import generate_odb_architecture_diagram
-from ai_agent.tools.golden_templates import generate_golden_odb_terraform
-from ai_agent.tools.network_validator import (
-    get_workspace_root,
-    resolve_safe_workspace_path,
-    save_generated_terraform_bundle,
-    validate_odb_network_cidrs,
-)
-from ai_agent.tools.onboarding_knowledge import (
-    evaluate_customer_onboarding_readiness,
-    get_odb_onboarding_and_architecture_guide,
-)
-from ai_agent.tools.terraform_registry import (
-    list_odb_terraform_resources,
-    validate_terraform_hcl,
-)
-
 MCP_SERVER_NAME = "oracle-google-onboarding-agent"
 MCP_SERVER_VERSION = "0.2.0"
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
@@ -267,8 +245,28 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
     """Executes an allow-listed MCP tool with stderr redirection, workspace containment, and timeout safety."""
     args = arguments or {}
 
-    # Redirect any accidental stdout writes during tool execution strictly to sys.stderr
+    # Redirect any accidental stdout writes during tool imports & execution strictly to sys.stderr
     with contextlib.redirect_stdout(sys.stderr):
+        from ai_agent.tools.day2_maintenance import (
+            analyze_day2_terraform_diff,
+            inspect_existing_terraform_workspace,
+        )
+        from ai_agent.tools.diagram_generator import generate_odb_architecture_diagram
+        from ai_agent.tools.golden_templates import generate_golden_odb_terraform
+        from ai_agent.tools.network_validator import (
+            resolve_safe_workspace_path,
+            save_generated_terraform_bundle,
+            validate_odb_network_cidrs,
+        )
+        from ai_agent.tools.onboarding_knowledge import (
+            evaluate_customer_onboarding_readiness,
+            get_odb_onboarding_and_architecture_guide,
+        )
+        from ai_agent.tools.terraform_registry import (
+            list_odb_terraform_resources,
+            validate_terraform_hcl,
+        )
+
         if tool_name in {"terraform_apply", "terraform_destroy", "apply", "destroy"}:
             return {
                 "isError": True,
@@ -469,8 +467,6 @@ def handle_jsonrpc_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 "serverInfo": {
                     "name": MCP_SERVER_NAME,
                     "version": MCP_SERVER_VERSION,
-                    "configuredModel": normalize_model_name(None),
-                    "workspaceRoot": str(get_workspace_root()),
                 },
             },
         }
