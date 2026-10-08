@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "oracle-at-google-onboarding-agent": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/odb-mcp-server",
+      "args": [],
+      "env": {
+        "ODB_WORKSPACE_ROOT": "${workspaceFolder}",
+        "ODB_AGENT_MODEL": "gemini-3.8-flash",
+        "ODB_FAST_VALIDATION": "1"
+      }
+    }
+  }
+}
