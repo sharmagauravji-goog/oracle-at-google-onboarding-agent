@@ -238,6 +238,32 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
             "properties": {},
         },
     },
+    {
+        "name": "verify_live_onboarding_and_iam_readiness",
+        "description": (
+            "Performs a live pre-deployment readiness check against the customer's GCP project for enabled APIs "
+            "(`oracledatabase.googleapis.com`, `servicenetworking.googleapis.com`), missing ODB IAM permissions "
+            "(`roles/oracledatabase.admin`, `roles/oracledatabase.networkAdmin`, `roles/oracledatabase.autonomousDatabaseAdmin`), "
+            "and Marketplace Private Offer / OCI Account Link verification."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "Target GCP project ID."},
+                "workload_type": {
+                    "type": "string",
+                    "description": "'adb', 'exadata_dedicated', 'exascale', or 'basedb'.",
+                    "default": "adb",
+                },
+                "principal_email": {
+                    "type": "string",
+                    "description": "Optional user or service account email to inspect IAM bindings for.",
+                    "default": "",
+                },
+            },
+            "required": ["project_id"],
+        },
+    },
 ]
 
 
@@ -258,6 +284,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
             save_generated_terraform_bundle,
             validate_odb_network_cidrs,
         )
+        from ai_agent.tools.odb_live_discovery import verify_live_onboarding_and_iam_readiness
         from ai_agent.tools.onboarding_knowledge import (
             evaluate_customer_onboarding_readiness,
             get_odb_onboarding_and_architecture_guide,
@@ -437,6 +464,18 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
         if tool_name == "list_odb_provider_resources":
             res_str = list_odb_terraform_resources()
             return {"isError": False, "content": [{"type": "text", "text": res_str}]}
+
+        if tool_name == "verify_live_onboarding_and_iam_readiness":
+            res_str = verify_live_onboarding_and_iam_readiness(
+                project_id=str(args.get("project_id", "my-odb-project-01")),
+                workload_type=str(args.get("workload_type", "adb")),
+                principal_email=str(args.get("principal_email", "")),
+            )
+            parsed = json.loads(res_str)
+            return {
+                "isError": not parsed.get("valid", True),
+                "content": [{"type": "text", "text": res_str}],
+            }
 
         return {
             "isError": True,

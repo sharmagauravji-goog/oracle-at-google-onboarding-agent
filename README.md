@@ -148,7 +148,7 @@ Add the `oracle-google-onboarding-agent` entry under `"mcpServers"` (replace `/A
 #### Step 3: Refresh & Verify Tool Discovery in Antigravity
 1. Save `mcp_config.json`.
 2. In the Antigravity Agent pane, navigate to **Additional Options (`...`) > MCP Servers** and click **Refresh** (or start a new conversation).
-3. Confirm that **`oracle-google-onboarding-agent`** shows a green connected status and lists all 9 tools (`get_odb_onboarding_guide`, `evaluate_onboarding_readiness`, `generate_odb_diagram`, `generate_golden_terraform`, `validate_odb_network_cidrs`, `validate_odb_terraform_hcl`, `inspect_day2_workspace`, `analyze_day2_terraform_diff`, and `list_odb_provider_resources`).
+3. Confirm that **`oracle-google-onboarding-agent`** shows a green connected status and lists all 10 tools (`get_odb_onboarding_guide`, `evaluate_onboarding_readiness`, `verify_live_onboarding_and_iam_readiness`, `generate_odb_diagram`, `generate_golden_terraform`, `validate_odb_network_cidrs`, `validate_odb_terraform_hcl`, `inspect_day2_workspace`, `analyze_day2_terraform_diff`, and `list_odb_provider_resources`).
 4. *(Optional)* To sanity-check the `stdio` server from your terminal before connecting:
    ```bash
    echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | .venv/bin/odb-mcp-server
@@ -157,6 +157,7 @@ Add the `oracle-google-onboarding-agent` entry under `"mcpServers"` (replace `/A
 #### Step 4: Invoke the MCP Tools from Antigravity Chat
 Once connected, Antigravity automatically discovers and invokes the MCP tools when you ask questions such as:
 - *"Use `evaluate_onboarding_readiness` to check our readiness for an Exadata Dedicated deployment in `us-east4` using a Shared VPC and CMEK."*
+- *"Use `verify_live_onboarding_and_iam_readiness` to check if anything is missing in project `my-odb-prod` before deploying Oracle Autonomous Database."*
 - *"Generate a hub-and-spoke HA/DR architecture diagram for Oracle Database@Google Cloud using `generate_odb_diagram`."*
 - *"Use `generate_golden_terraform` to create a Day-1 Autonomous Database (`adb`) Terraform bundle for project `my-odb-prod`."*
 - *"Run `inspect_day2_workspace` on `./output/odb-golden-bundle` and check for `ForceNew` replacement risks."*
@@ -205,6 +206,7 @@ Create `.vscode/mcp.json` (or `.cursor/mcp.json`) in your project workspace:
 | :--- | :--- | :--- |
 | `get_odb_onboarding_guide` | Grounded answers on Prerequisites, Marketplace (Private Offer vs PAYG), OCI Linking, MOS/CSI Support, ODB Networks, Backup, CMEK, Monitoring | Read-only knowledge base |
 | `evaluate_onboarding_readiness` | Evaluates customer onboarding readiness (0–100 score + missing checklist items & `gcloud` bootstrap commands) | Read-only evaluator |
+| `verify_live_onboarding_and_iam_readiness` | Queries live GCP project APIs (`oracledatabase.googleapis.com`), active IAM roles (`roles/oracledatabase.admin`), and Marketplace/OCI link readiness | Read-only live GCP pre-flight check |
 | `generate_odb_diagram` | Generates syntax-verified Mermaid (`mermaid`) and ASCII architecture/onboarding diagrams | Workspace path sandboxed |
 | `generate_golden_terraform` | Generates verified Day-1 Golden Terraform (`networking.tf`, `workload.tf`, `variables.tf`, `outputs.tf`, `versions.tf`) in `./output/<bundle>` | Fast validation (`<50ms`), concise summary, workspace sandboxed |
 | `validate_odb_terraform_hcl` | Validates HCL against `EXACT_ODB_RESOURCE_SCHEMAS`, `/28` subnet rules, and secret-leak rules | Fast validation (`<50ms`), read-only |

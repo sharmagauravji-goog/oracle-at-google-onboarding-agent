@@ -421,3 +421,131 @@ def check_customer_gcp_readiness(project_id: str) -> str:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return json.dumps({"project_id": cleaned_project, "error": str(exc)})
+
+
+def verify_live_onboarding_and_iam_readiness(
+    project_id: str,
+    workload_type: str = "adb",
+    principal_email: str = "",
+) -> str:
+    """Performs a live pre-deployment readiness check for ODB@GCP APIs, IAM permissions, and Marketplace/OCI link status.
+
+    Args:
+        project_id: Target Google Cloud project ID.
+        workload_type: Target Oracle workload (`adb`, `exadata_dedicated`, `exascale`, `basedb`).
+        principal_email: Optional IAM user/service-account email to inspect (defaults to active `gcloud` account).
+
+    Returns:
+        JSON string detailing API status, Marketplace/OCI link status, missing ODB IAM roles, and exact `gcloud` fix commands.
+    """
+    cleaned_project = (project_id or "").strip()
+    if not _PROJECT_ID_PATTERN.match(cleaned_project):
+        return json.dumps({"valid": False, "error": f"Invalid GCP project_id '{cleaned_project}'."}, indent=2)
+
+    workload = (workload_type or "adb").strip().lower()
+    api_report = json.loads(check_customer_gcp_readiness(cleaned_project))
+
+    gcloud_bin = shutil.which("gcloud")
+    active_account = principal_email.strip()
+    if not active_account and gcloud_bin:
+        try:
+            acct_proc = subprocess.run(
+                [gcloud_bin, "config", "get-value", "account", "--quiet"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            if acct_proc.returncode == 0:
+                active_account = (acct_proc.stdout or "").strip()
+        except (OSError, subprocess.SubprocessError):
+            active_account = ""
+
+    required_odb_roles = [
+        "roles/oracledatabase.admin",
+        "roles/oracledatabase.networkAdmin",
+        "roles/compute.networkAdmin",
+    ]
+    if workload == "adb":
+        required_odb_roles.append("roles/oracledatabase.autonomousDatabaseAdmin")
+    elif workload in {"exadata_dedicated", "exascale"}:
+        required_odb_roles.append("roles/oracledatabase.exadataAdmin")
+
+    granted_roles: list[str] = []
+    missing_odb_roles: list[str] = []
+    iam_checked = False
+
+    if gcloud_bin and active_account:
+        try:
+            iam_proc = subprocess.run(
+                [
+                    gcloud_bin,
+                    "projects",
+                    "get-iam-policy",
+                    cleaned_project,
+                    "--format=json",
+                    "--quiet",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if iam_proc.returncode == 0 and iam_proc.stdout.strip():
+                iam_checked = True
+                policy = json.loads(iam_proc.stdout)
+                for binding in policy.get("bindings", []):
+                    role = binding.get("role", "")
+                    members = binding.get("members", [])
+                    if any(active_account in m for m in members):
+                        granted_roles.append(role)
+        except Exception:
+            iam_checked = False
+
+    has_odb_admin = "roles/oracledatabase.admin" in granted_roles
+    for req_role in required_odb_roles:
+        if req_role not in granted_roles and not (
+            has_odb_admin and req_role.startswith("roles/oracledatabase.")
+        ):
+            missing_odb_roles.append(req_role)
+
+    member_prefix = (
+        f"serviceAccount:{active_account}"
+        if active_account.endswith(".gserviceaccount.com")
+        else f"user:{active_account or '<YOUR_EMAIL>'}"
+    )
+    iam_remediation_commands = [
+        f"gcloud projects add-iam-policy-binding {cleaned_project} --member='{member_prefix}' --role='{role}'"
+        for role in missing_odb_roles
+    ]
+
+    return json.dumps(
+        {
+            "valid": True,
+            "project_id": cleaned_project,
+            "workload_type": workload,
+            "active_principal": active_account or "unknown",
+            "api_readiness": api_report,
+            "iam_readiness": {
+                "iam_policy_inspected": iam_checked,
+                "granted_roles_for_principal": granted_roles,
+                "missing_odb_roles": missing_odb_roles,
+                "ready_for_odb_deployment": len(missing_odb_roles) == 0 and api_report.get("status") == "ready",
+                "remediation_commands": iam_remediation_commands,
+            },
+            "marketplace_and_oci_linking_check": {
+                "console_verification_url": (
+                    f"https://console.cloud.google.com/oracledatabase/locations?project={cleaned_project}"
+                ),
+                "marketplace_orders_url": (
+                    f"https://console.cloud.google.com/marketplace/orders?project={cleaned_project}"
+                ),
+                "note": (
+                    "Verify in Google Cloud Console -> Marketplace Orders that your Oracle Database@Google Cloud "
+                    "Private Offer (or PAYG subscription) is ACTIVE and linked to your OCI tenancy."
+                ),
+            },
+        },
+        indent=2,
+    )
+

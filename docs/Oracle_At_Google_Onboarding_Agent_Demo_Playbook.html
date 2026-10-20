@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html><head><meta charset='utf-8'>
+<title>Oracle@Google Onboarding Agent — Live Demo Flow Playbook (Antigravity IDE)</title>
+<style>
+body { font-family: Arial, sans-serif; color: #202124; line-height: 1.5; max-width: 900px; margin: 24px auto; }
+h1 { color: #1a73e8; font-size: 22pt; border-bottom: 2px solid #1a73e8; padding-bottom: 6px; }
+h2 { color: #174ea6; font-size: 16pt; margin-top: 24px; }
+h3 { color: #188038; font-size: 13pt; margin-top: 18px; }
+code { font-family: 'Courier New', monospace; background-color: #f1f3f4; padding: 1px 4px; border-radius: 3px; }
+pre { font-family: 'Courier New', monospace; background-color: #f8f9fa; border: 1px solid #dadce0; padding: 12px; border-radius: 6px; white-space: pre-wrap; }
+blockquote { border-left: 4px solid #1a73e8; background-color: #e8f0fe; padding: 10px 14px; margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; margin: 14px 0; }
+th, td { border: 1px solid #dadce0; padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
+</style></head><body>
+<h1>Oracle@Google Onboarding Agent — Live Demo Flow Playbook (Antigravity IDE Edition)</h1>
+<p><b>Target Audience:</b> Google Cloud &amp; Oracle Internal Field Teams (CEs, Cloud Architects, FSRs) and Enterprise Customers</p>
+<p><b>Deployment Environment:</b> Google Antigravity IDE + <code>oracle-google-onboarding-agent</code> MCP Server (<code>stdio</code>)</p>
+<p><b>Repository:</b> <a href='https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent'><code>sharmagauravji-goog/oracle-at-google-onboarding-agent</code></a></p>
+<hr/>
+<h2>Executive Summary &amp; Demo Value Proposition</h2>
+<p>Enterprise customers adopting <b>Oracle Database@Google Cloud (<code>oracledatabase.googleapis.com</code>)</b> face a multi-phase journey spanning Google Cloud IAM &amp; APIs, Google Cloud Marketplace procurement (Private Offer vs. Pay-As-You-Go), OCI Tenancy Linking, My Oracle Support (MOS) CSI registration, ODB Network &amp; NCC topology design, and <code>hashicorp/google &gt;= 7.0.0</code> Terraform provisioning.</p>
+<p>When integrated into <b>Google Antigravity IDE</b> via the built-in <b>Model Context Protocol (<code>stdio</code> MCP) Server</b>, the <b>Oracle@Google Onboarding Agent</b> acts as a domain-grounded co-pilot that:</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Eliminates Hallucinations:</b> Enforces exact <code>oracledatabase.googleapis.com</code> API rules, <code>/28</code> minimum subnet math, exact Cloud KMS service agent identities (<code>service-&lt;PROJECT_NUMBER&gt;@gcp-sa-oracledatabase.iam.gserviceaccount.com</code>), and verified <code>hashicorp/google</code> schemas (<code>top_level</code> vs. nested <code>properties {}</code>).</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Inspects Live Readiness:</b> Audits the customer&#x27;s live GCP project for enabled APIs, missing ODB IAM permissions (<code>roles/oracledatabase.admin</code>, <code>roles/oracledatabase.networkAdmin</code>), and Marketplace/OCI link status.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Generates Verified Visuals &amp; Code in <code>&lt;50ms</code>:</b> Produces syntax-verified <b>Mermaid &amp; ASCII architecture diagrams</b> and <b>Golden Day-1 Terraform bundles</b> inside the customer&#x27;s workspace.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Enforces Human-in-the-Loop Execution Safety:</b> The MCP server intentionally blocks autonomous <code>terraform apply</code> / <code>terraform destroy</code> calls, ensuring infrastructure mutations only happen via Antigravity&#x27;s supervised terminal confirmation or CI/CD.</p>
+<hr/>
+<h2>Pre-Demo Setup Checklist in Antigravity IDE (2 Minutes)</h2>
+<p style='margin: 4px 0 4px 18px;'>• <b>Verify MCP Server Registration in Antigravity:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Open the Antigravity Agent pane → click <b>Additional Options (<code>...</code>)</b> → <b>MCP Servers</b>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Confirm <b><code>oracle-google-onboarding-agent</code></b> shows a <b>green connected dot</b> with all <b>10 MCP tools</b> loaded:</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>get_odb_onboarding_guide</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>evaluate_onboarding_readiness</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>verify_live_onboarding_and_iam_readiness</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>generate_odb_diagram</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>generate_golden_terraform</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>validate_odb_network_cidrs</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>validate_odb_terraform_hcl</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>inspect_day2_workspace</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>analyze_day2_terraform_diff</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>list_odb_provider_resources</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Optional Demo Simulation Setup (To Trigger Step 3 &quot;Missing ODB Permission&quot; Live):</b></p>
+<p style='margin: 4px 0 4px 18px;'>• If using a live demo project (e.g., <code>my-odb-demo-proj</code>), ensure your demo user temporarily lacks <code>roles/oracledatabase.admin</code> (or pass a test principal email to <code>verify_live_onboarding_and_iam_readiness</code>) so the agent catches the missing IAM role live on screen and gives you the exact <code>gcloud</code> fix command.</p>
+<hr/>
+<h2>Demo Flow 1 (Flagship End-to-End Flow — 12 Mins): From Zero to Deployed ODB Network &amp; Autonomous Database in Antigravity</h2>
+<blockquote><b>Storyline:</b> An enterprise Cloud Architect opens Antigravity IDE to onboard their organization onto <b>Oracle Database@Google Cloud</b> and deploy an <b>Oracle Autonomous Database 23ai (<code>adb</code>)</b> with <b>Network Connectivity Center (NCC)</b> hybrid connectivity.</blockquote>
+<table>
+<thead><tr><th>Step</th><th>Customer Action in Antigravity</th><th>MCP Tool(s) Triggered</th><th>Key Demo Takeaway</th></tr></thead>
+<tbody>
+<tr><td><b>Step 1</b></td><td>Asks what steps are required to deploy ODB@GCP</td><td><code>get_odb_onboarding_guide</code> + <code>generate_odb_diagram</code></td><td>Complete 6-phase lifecycle + Mermaid flowchart</td></tr>
+<tr><td><b>Step 2</b></td><td>Asks if a specific step (Marketplace Private Offer &amp; OCI Link) is done</td><td><code>evaluate_onboarding_readiness</code> + <code>verify_live_onboarding_and_iam_readiness</code></td><td>Explains Private Offer vs. PAYG entitlement &amp; verifies status</td></tr>
+<tr><td><b>Step 3</b></td><td>Asks if anything is missing before deploying Oracle ADB</td><td><code>verify_live_onboarding_and_iam_readiness</code></td><td>Detects <b>missing <code>roles/oracledatabase.admin</code> permission</b> &amp; gives exact <code>gcloud</code> fix</td></tr>
+<tr><td><b>Step 4</b></td><td>Fixes IAM permission, then asks about <b>NCC integration &amp; architecture diagram</b></td><td><code>get_odb_onboarding_guide</code> + <code>generate_odb_diagram</code></td><td>Renders Hub-and-Spoke NCC + Cloud Interconnect + Private DNS diagram</td></tr>
+<tr><td><b>Step 5</b></td><td>Asks to create Terraform to deploy the ODB Network &amp; ADB</td><td><code>generate_golden_terraform</code></td><td>Writes schema-verified HCL into <code>./output/odb-adb-demo</code> in <code>&lt;50ms</code></td></tr>
+<tr><td><b>Step 6</b></td><td>Asks Antigravity to execute the Terraform deployment</td><td>Antigravity <code>run_command</code> (Human-in-the-loop)</td><td>Runs <code>terraform init</code>, <code>plan</code>, and supervised <code>apply</code></td></tr>
+</tbody></table>
+<hr/>
+<h3>Step 1: Customer Asks for the Complete End-to-End Deployment Process</h3>
+<p><b>Presenter Talk Track:</b></p>
+<p><i>&quot;Let&#x27;s start in the shoes of an enterprise Cloud Architect who just opened Antigravity IDE. They know they want to deploy Oracle Database@Google Cloud, but they need to understand the complete end-to-end onboarding process across both Google Cloud and Oracle.&quot;</i></p>
+<p><b>Prompt to Type in Antigravity Chat:</b></p>
+<pre>What are the complete end-to-end steps required to onboard and deploy Oracle Database@Google Cloud? Also show me the end-to-end onboarding flow diagram.</pre>
+<p><b>What Antigravity Does Behind the Scenes:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>get_odb_onboarding_guide(topic=&quot;all&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>generate_odb_diagram(diagram_type=&quot;end_to_end_onboarding&quot;)</code>.</p>
+<p><b>What the Agent Returns on Screen:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Visual Flowchart:</b> Renders the syntax-verified Mermaid flowchart and ASCII diagram showing all 6 phases.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Structured 6-Phase Walkthrough:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Phase 1 — Prerequisites &amp; IAM:</b> Enabling <code>oracledatabase.googleapis.com</code>, <code>compute.googleapis.com</code>, <code>servicenetworking.googleapis.com</code>, <code>cloudkms.googleapis.com</code>, <code>monitoring.googleapis.com</code>, <code>logging.googleapis.com</code>, and granting <code>roles/billing.admin</code> + <code>roles/consumerprocurement.orderAdmin</code> (for procurement) and <code>roles/oracledatabase.admin</code> (for deployment).</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Phase 2 — Google Cloud Marketplace Procurement:</b> Choosing between a negotiated <b>Private Offer</b> (100% MACC drawdown, BYOL or License Included) or <b>Pay-As-You-Go (PAYG)</b>.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Phase 3 — OCI Account Linking:</b> Creating a new partner-linked OCI tenancy or linking an existing OCI tenancy in the Google Cloud Console (<code>Oracle Database@Google Cloud -&gt; Account setup</code>) to bind the Marketplace <code>entitlement_id</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Phase 4 — My Oracle Support (MOS) &amp; CSI Registration:</b> Registering the Customer Support Identifier (CSI) at <code>support.oracle.com</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Phase 5 — ODB Network &amp; Subnet Topology:</b> Provisioning <code>google_oracle_database_odb_network</code> and <code>google_oracle_database_odb_subnet</code> (<code>CLIENT_SUBNET</code> / <code>BACKUP_SUBNET</code>, minimum <code>/28</code> CIDR).</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Phase 6 — Day-1 Terraform Provisioning &amp; Observability:</b> Deploying Autonomous DB / Exadata via <code>hashicorp/google &gt;= 7.0.0</code>.</p>
+<hr/>
+<h3>Step 2: Customer Asks if a Specific Step (Marketplace Private Offer) Is Done</h3>
+<p><b>Presenter Talk Track:</b></p>
+<p><i>&quot;Next, the customer knows their procurement team was working on a Google Cloud Marketplace Private Offer, and they want to check how Private Offer activation works and whether that step is complete for their project.&quot;</i></p>
+<p><b>Prompt to Type in Antigravity Chat:</b></p>
+<pre>Can you check the Marketplace Private Offer step for project ad-auth-project? How do we verify if our Private Offer and OCI Account Linking are completed, and what is our onboarding readiness score if Private Offer is done but OCI Account Linking is still pending?</pre>
+<p><b>What Antigravity Does Behind the Scenes:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>get_odb_onboarding_guide(topic=&quot;marketplace_procurement&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>evaluate_onboarding_readiness(project_id=&quot;ad-auth-project&quot;, procurement_model=&quot;private_offer&quot;, workload_type=&quot;adb&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;ad-auth-project&quot;, workload_type=&quot;adb&quot;)</code>.</p>
+<p><b>What the Agent Returns on Screen:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Explains that accepting the <b>Private Offer</b> in <b>Google Cloud Console → Marketplace → Orders</b> generates an active <code>entitlement_id</code> billed 100% through the Google Cloud invoice (with zero separate OCI invoice).</p>
+<p style='margin: 4px 0 4px 18px;'>• Provides the direct Console verification links for project <code>ad-auth-project</code>:</p>
+<p style='margin: 4px 0 4px 18px;'>• Marketplace Orders: <code>https://console.cloud.google.com/marketplace/orders?project=ad-auth-project</code></p>
+<p style='margin: 4px 0 4px 18px;'>• ODB Account Setup: <code>https://console.cloud.google.com/oracledatabase/locations?project=ad-auth-project</code></p>
+<p style='margin: 4px 0 4px 18px;'>• Shows the <b>Onboarding Readiness Checklist &amp; Score</b> highlighting what is completed vs. what must be completed before database provisioning.</p>
+<hr/>
+<h3>Step 3: Customer Asks if Anything Is Missing Before Deploying Oracle Autonomous Database (ADB)</h3>
+<p><b>Presenter Talk Track:</b></p>
+<p><i>&quot;Now the customer says: &#x27;Assume our Private Offer and account linking are set—is there anything missing in our GCP project before I deploy Oracle Autonomous Database?&#x27; Watch how the agent inspects the live GCP project and catches a missing ODB IAM permission.&quot;</i></p>
+<p><b>Prompt to Type in Antigravity Chat:</b></p>
+<pre>Before we deploy Oracle Autonomous Database (adb) in project ad-auth-project, can you check our live project readiness to see if any required APIs or ODB IAM permissions are missing for principal devops-lead@example.com?</pre>
+<p><i>(Tip: You can omit <code>for principal devops-lead@example.com</code> to inspect your own active <code>gcloud</code> identity, or specify any user/service-account email that lacks <code>roles/oracledatabase.admin</code> to guarantee the missing-permission alert triggers during the demo!)</i></p>
+<p><b>What Antigravity Does Behind the Scenes:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;ad-auth-project&quot;, workload_type=&quot;adb&quot;, principal_email=&quot;devops-lead@example.com&quot;)</code>.</p>
+<p><b>What the Agent Returns on Screen (The &quot;Aha!&quot; Moment):</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Blocker Detected — Missing ODB IAM Roles &amp; APIs:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Missing IAM Roles:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>roles/oracledatabase.admin</code> (or least-privilege <code>roles/oracledatabase.networkAdmin</code> + <code>roles/oracledatabase.autonomousDatabaseAdmin</code>)</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>roles/compute.networkAdmin</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Missing/Checked GCP APIs:</b> Checks <code>oracledatabase.googleapis.com</code> and <code>servicenetworking.googleapis.com</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Exact Copy-Pasteable Remediation Commands:</b></p>
+<pre>  # 1. Enable required Oracle Database@Google Cloud APIs
+  gcloud services enable oracledatabase.googleapis.com compute.googleapis.com servicenetworking.googleapis.com --project=ad-auth-project
+
+  # 2. Grant missing ODB &amp; Network IAM permissions
+  gcloud projects add-iam-policy-binding ad-auth-project \
+    --member=&#x27;user:devops-lead@example.com&#x27; \
+    --role=&#x27;roles/oracledatabase.admin&#x27;
+
+  gcloud projects add-iam-policy-binding ad-auth-project \
+    --member=&#x27;user:devops-lead@example.com&#x27; \
+    --role=&#x27;roles/compute.networkAdmin&#x27;</pre>
+<hr/>
+<h3>Step 4: Once Fixed, Customer Asks About NCC Integration &amp; Architecture Diagram</h3>
+<p><b>Presenter Talk Track:</b></p>
+<p><i>&quot;Once the IAM permission is granted right from Antigravity&#x27;s terminal, the customer asks an advanced enterprise networking question: How do we connect our on-premises data center and multiple regional application spokes to the ODB Network using Network Connectivity Center (NCC)? And can you generate the architecture diagram?&quot;</i></p>
+<p><b>Prompt to Type in Antigravity Chat:</b></p>
+<pre>We fixed the IAM permissions. Now we want to connect our on-premises network and multiple application VPCs to the ODB Network using Network Connectivity Center (NCC) in us-east4 (zone us-east4-b-r1). How does NCC integration work with ODB Network, and can you generate the architecture diagram and save it to ./output/diagrams?</pre>
+<p><b>What Antigravity Does Behind the Scenes:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>get_odb_onboarding_guide(topic=&quot;odb_networks_and_topologies&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>generate_odb_diagram(diagram_type=&quot;networking_hub_and_spoke_ha_dr&quot;, project_id=&quot;ad-auth-project&quot;, region=&quot;us-east4&quot;, gcp_oracle_zone=&quot;us-east4-b-r1&quot;, save_to_workspace=True, output_dir=&quot;./output/diagrams&quot;)</code>.</p>
+<p><b>What the Agent Returns on Screen:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Anti-Hallucination Grounded Explanation of NCC + ODB Network:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Explains <b>Topology 3 (Hub-and-Spoke with Network Connectivity Center)</b>:</p>
+<p style='margin: 4px 0 4px 18px;'>• On-premises connects via <b>Cloud Interconnect (Dedicated/Partner)</b> or <b>HA VPN</b> into a central <b>NCC Transit Hub VPC</b>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Workload VPC spokes and the ODB-attached VPC connect via NCC spokes, enabling transitive routing without manual IPSec VPNs between GCP and OCI (<code>google_oracle_database_odb_network</code> uses Google-managed colocated partner interconnect in <code>us-east4-b-r1</code>).</p>
+<p style='margin: 4px 0 4px 18px;'>• Explains <b>Cloud DNS Private Zones (<code>*.oraclevcn.com</code>)</b> and Inbound/Outbound DNS Forwarding so on-prem and spoke apps resolve Oracle SCAN / mTLS hostnames.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Visual Diagram Rendered &amp; Saved:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Displays the full <b>Mermaid (<code>mermaid</code>)</b> and <b>ASCII</b> Hub-and-Spoke NCC architecture diagram in chat and writes <code>./output/diagrams/networking_hub_and_spoke_ha_dr.md</code> into the workspace.</p>
+<hr/>
+<h3>Step 5: Customer Asks to Create Terraform to Deploy the ODB Network &amp; Autonomous Database</h3>
+<p><b>Presenter Talk Track:</b></p>
+<p><i>&quot;Now that the architecture is approved, the customer asks Antigravity to generate the production Terraform for the ODB Network (<code>google_oracle_database_odb_network</code>), the Client Subnet (<code>google_oracle_database_odb_subnet</code>), and the Autonomous Database (<code>google_oracle_database_autonomous_database</code>). Notice how fast this runs (<code>&lt;50ms</code>) and how it enforces our 5-layer anti-hallucination guardrails.&quot;</i></p>
+<p><b>Prompt to Type in Antigravity Chat:</b></p>
+<pre>Generate a production Golden Terraform bundle in ./output/odb-adb-demo for project ad-auth-project in region us-east4 (zone us-east4-b-r1) to deploy our ODB Network, Client Subnet (10.20.1.0/24), and an Oracle Autonomous Database 23ai (adb) named ODBDEMO1 with 4 ECPUs and 1 TB storage.</pre>
+<p><b>What Antigravity Does Behind the Scenes:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>generate_golden_terraform</code>:</p>
+<pre>  {
+    &quot;project_id&quot;: &quot;ad-auth-project&quot;,
+    &quot;workload_type&quot;: &quot;adb&quot;,
+    &quot;region&quot;: &quot;us-east4&quot;,
+    &quot;gcp_oracle_zone&quot;: &quot;us-east4-b-r1&quot;,
+    &quot;vpc_name&quot;: &quot;odb-vpc&quot;,
+    &quot;vpc_cidr&quot;: &quot;10.10.0.0/16&quot;,
+    &quot;client_subnet_cidr&quot;: &quot;10.20.1.0/24&quot;,
+    &quot;db_name&quot;: &quot;ODBDEMO1&quot;,
+    &quot;compute_count&quot;: 4,
+    &quot;storage_size_tb&quot;: 1,
+    &quot;bundle_name&quot;: &quot;odb-adb-demo&quot;,
+    &quot;base_output_dir&quot;: &quot;./output&quot;
+  }</pre>
+<p><b>What the Agent Returns on Screen:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Writes 5 verified Terraform files directly into <code>./output/odb-adb-demo/</code>:</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>versions.tf</code> (<code>hashicorp/google &gt;= 7.0.0</code>)</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>variables.tf</code> (<code>db_admin_password</code> marked <code>sensitive = true</code>, never hardcoded in HCL)</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>networking.tf</code> (<code>google_compute_network</code>, <code>google_oracle_database_odb_network</code>, and <code>google_oracle_database_odb_subnet</code> with <code>purpose = &quot;CLIENT_SUBNET&quot;</code> and <code>/24</code> CIDR)</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>workload.tf</code> (<code>google_oracle_database_autonomous_database</code> with exact <code>properties {}</code> block nesting and <code>deletion_protection = true</code>)</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>outputs.tf</code></p>
+<p style='margin: 4px 0 4px 18px;'>• Displays the <b>Guardrail Verification Summary</b> confirming:</p>
+<p style='margin: 4px 0 4px 18px;'>• Zero <code>oci_*</code> provider hallucinations</p>
+<p style='margin: 4px 0 4px 18px;'>• Valid <code>/28</code>+ CIDR math (<code>10.20.1.0/24</code> vs <code>10.10.0.0/16</code> — zero overlap)</p>
+<p style='margin: 4px 0 4px 18px;'>• Exact <code>EXACT_ODB_RESOURCE_SCHEMAS</code> verification passed.</p>
+<hr/>
+<h3>Step 6: Customer Asks to Execute the Terraform Deployment</h3>
+<p><b>Presenter Talk Track:</b></p>
+<p><i>&quot;Finally, the customer asks Antigravity to execute the Terraform. Here is a critical enterprise safety feature to highlight: our MCP server intentionally refuses to expose <code>terraform apply</code> or <code>terraform destroy</code> as autonomous MCP tools. Instead, Antigravity uses its supervised terminal tool (<code>run_command</code>) to run <code>terraform init</code> and <code>terraform plan</code>, and asks the human engineer for explicit approval before executing <code>terraform apply</code>.&quot;</i></p>
+<p><b>Prompt to Type in Antigravity Chat:</b></p>
+<pre>Now initialize and validate the Terraform bundle in ./output/odb-adb-demo, and run terraform plan so we can review and execute the deployment.</pre>
+<p><b>What Antigravity Does Behind the Scenes:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• Uses Antigravity&#x27;s terminal execution tool (<code>run_command</code>) inside <code>./output/odb-adb-demo</code>:</p>
+<pre>   export TF_VAR_db_admin_password=&quot;DemoStrongPassword#2026!&quot;
+   terraform -chdir=./output/odb-adb-demo init
+   terraform -chdir=./output/odb-adb-demo validate
+   terraform -chdir=./output/odb-adb-demo plan -out=tfplan</pre>
+<p style='margin: 4px 0 4px 18px;'>• Shows the exact Terraform execution plan (<code>+ create</code> for <code>google_compute_network.odb_vpc</code>, <code>google_oracle_database_odb_network.primary</code>, <code>google_oracle_database_odb_subnet.client_subnet</code>, and <code>google_oracle_database_autonomous_database.adb</code>).</p>
+<p style='margin: 4px 0 4px 18px;'>• Prompts the user to approve:</p>
+<pre>   terraform -chdir=./output/odb-adb-demo apply tfplan</pre>
+<hr/>
+<h2>Suggested Additional Demo Flows for Internal Teams &amp; Customers</h2>
+<p>Below are <b>3 additional modular flows</b> (5–8 minutes each) that you can run standalone or append to Flow 1 depending on the audience (Security/Compliance teams, Platform Engineering teams, or Day-2 DBAs).</p>
+<hr/>
+<h3>Demo Flow 2: Regulated Enterprise Exadata Dedicated on Shared VPC + Cloud KMS (CMEK) + RMAN Backups (8 Mins)</h3>
+<p><b>Best For:</b> Financial Services, Healthcare, and Public Sector customers with strict Shared VPC and Customer-Managed Encryption Key (CMEK) mandates.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 1 — Shared VPC &amp; Subnet CIDR Validation:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;We use an Enterprise Shared VPC in host project <code>corp-network-host-prod</code> (<code>10.10.0.0/16</code>) and want to deploy Exadata Dedicated (<code>Exadata.X11M</code>) in service project <code>odb-exadata-service-prod</code>. Can you validate if <code>10.20.1.0/24</code> (Client Subnet) and <code>10.20.2.0/24</code> (Backup Subnet) are compliant and non-overlapping?&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>validate_odb_network_cidrs</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Confirms both subnets meet the <code>/28</code> minimum (256 IPs each) and have zero overlap with <code>10.10.0.0/16</code> or each other.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 2 — Cloud KMS CMEK Service Agent &amp; Encryption Diagram:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;We require Google Cloud KMS (CMEK) for Oracle TDE encryption at rest. Which exact GCP Service Agent needs <code>roles/cloudkms.cryptoKeyEncrypterDecrypter</code>, and can you show me the CMEK encryption flow diagram?&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tools Triggered:</b> <code>get_odb_onboarding_guide(topic=&quot;encryption_and_cmek&quot;)</code> + <code>generate_odb_diagram(diagram_type=&quot;encryption_cmek&quot;)</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Highlights the anti-hallucination guardrail—gives the exact service agent <code>service-&lt;PROJECT_NUMBER&gt;@gcp-sa-oracledatabase.iam.gserviceaccount.com</code> (blocking common LLM hallucinations like <code>gcp-sa-oracle</code>) and renders the CMEK + TDE Master Key hierarchy diagram.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 3 — Generate Shared VPC Exadata Dedicated Terraform:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;Generate the Golden Terraform bundle for <code>exadata_dedicated</code> in service project <code>odb-exadata-service-prod</code> attached to Shared VPC host project <code>corp-network-host-prod</code> in <code>./output/odb-exadata-shared-vpc</code>.&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>generate_golden_terraform(project_id=&quot;odb-exadata-service-prod&quot;, shared_vpc_host_project_id=&quot;corp-network-host-prod&quot;, workload_type=&quot;exadata_dedicated&quot;, bundle_name=&quot;odb-exadata-shared-vpc&quot;)</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Generates <code>google_oracle_database_cloud_exadata_infrastructure</code>, <code>google_oracle_database_cloud_vm_cluster</code>, <code>CLIENT_SUBNET</code>, and <code>BACKUP_SUBNET</code> wired to <code>projects/corp-network-host-prod/global/networks/odb-vpc</code>.</p>
+<hr/>
+<h3>Demo Flow 3: &quot;Catching Bad AI Code&quot; — 5-Layer Anti-Hallucination &amp; Schema Validator (5 Mins)</h3>
+<p><b>Best For:</b> Internal Google/Oracle Engineering teams and DevSecOps leads who ask <i>&quot;Why can&#x27;t we just use a generic ungrounded LLM to write ODB Terraform?&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 1 — Feed Hallucinated Terraform to the Agent:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Presenter Talk Track:</b> <i>&quot;Generic LLMs frequently confuse OCI provider resources with Google Cloud provider resources, hallucinate resource names (<code>odbnetwork</code> without an underscore), use <code>/29</code> subnets that fail at deployment time, put nested attributes at the top level, or hardcode database passwords. Let&#x27;s paste a broken snippet into Antigravity and ask the MCP server to validate it.&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b></p>
+<pre>     Can you validate this Terraform snippet using validate_odb_terraform_hcl and tell me everything wrong with it?
+
+     resource &quot;oci_database_autonomous_database&quot; &quot;bad_db&quot; {}
+     resource &quot;google_oracle_database_odbnetwork&quot; &quot;bad_net&quot; {
+       project = &quot;my-odb-project-01&quot;
+     }
+     resource &quot;google_oracle_database_odb_subnet&quot; &quot;bad_sub&quot; {
+       cidr_range = &quot;10.20.1.0/29&quot;
+     }
+     resource &quot;google_oracle_database_autonomous_database&quot; &quot;bad_adb&quot; {
+       project = &quot;my-odb-project-01&quot;
+       compute_count = 4
+       admin_password = &quot;HardcodedSecretPassword123!&quot;
+     }</pre>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 2 — Instant Deterministic Catch (<code>&lt;50ms</code>):</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>validate_odb_terraform_hcl</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Deterministically flags all 5 errors in a single pass:</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Wrong Provider (<code>oci_<i></code>):</b> Must use <code>hashicorp/google</code> (<code>google_oracle_database_</i></code>), not <code>oci_*</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Hallucinated Resource Type:</b> <code>google_oracle_database_odbnetwork</code> -&gt; must be <code>google_oracle_database_odb_network</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Invalid Attribute &amp; CIDR Prefix:</b> <code>cidr_range = &quot;10.20.1.0/29&quot;</code> -&gt; attribute is <code>cidr</code> (not <code>cidr_range</code>), and <code>/29</code> violates the mandatory <code>/28</code> minimum prefix length.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Misplaced Nested Attribute:</b> <code>compute_count = 4</code> must be nested inside <code>properties { compute_count = 4 }</code>, not at the top level.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Hardcoded Secret Violation:</b> <code>admin_password</code> must use a sensitive input variable (<code>var.db_admin_password</code>) injected via <code>TF_VAR_db_admin_password</code> or Secret Manager.</p>
+<hr/>
+<h3>Demo Flow 4: Day-2 Production Operations &amp; Blocking Destructive <code>ForceNew</code> Replacements (5 Mins)</h3>
+<p><b>Best For:</b> Database Reliability Engineers (DBREs) and Production Operations teams worried about Terraform accidentally destroying a live production database during Day-2 scaling.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 1 — Audit Existing Production Workspace:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;Inspect our deployed Terraform workspace in <code>./output/odb-adb-demo</code> using <code>inspect_day2_workspace</code> and summarize our <code>deletion_protection</code> posture and which attributes can be scaled in-place vs. which trigger destructive <code>ForceNew</code> recreation.&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>inspect_day2_workspace(workspace_dir=&quot;./output/odb-adb-demo&quot;)</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Inventories all resources in <code>./output/odb-adb-demo</code>, confirms <code>deletion_protection = true</code>, lists safe in-place mutable attributes (<code>compute_count</code>, <code>data_storage_size_tb</code>), and warns against immutable <code>ForceNew</code> fields (<code>autonomous_database_id</code>, <code>odb_network</code>, <code>odb_subnet</code>, <code>cidr</code>, <code>gcp_oracle_zone</code>).</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 2 — Catch an Accidental <code>ForceNew</code> Outage Before <code>terraform plan</code>:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;A developer proposed a Day-2 PR that scales <code>compute_count</code> from <code>4</code> to <code>8</code> ECPUs, disables <code>deletion_protection = false</code>, and changes <code>odb_subnet</code> to a new subnet. Run <code>analyze_day2_terraform_diff</code> to check if this change is safe.&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>analyze_day2_terraform_diff</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Approves</b> <code>compute_count: 4 -&gt; 8</code> as a safe online Day-2 scaling operation.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>BLOCKS</b> the <code>odb_subnet</code> change (<code>CRITICAL: Modifying immutable ForceNew attribute &#x27;odb_subnet&#x27; will force Terraform to DESTROY and RECREATE the live database!</code>) and flags <code>deletion_protection = false</code> as a high-severity production risk.</p>
+</body></html>
