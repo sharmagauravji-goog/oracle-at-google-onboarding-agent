@@ -99,10 +99,72 @@ odb-onboarding-agent chat
 
 ---
 
-## Option 2: Connect to VS Code, Cursor, Claude Desktop, or Antigravity via MCP Server
+## Option 2: Connect to Antigravity, VS Code, Cursor, or Claude Desktop via MCP Server
+
+### Integrating with Antigravity IDE (Step-by-Step)
+
+Follow these steps to register the **Oracle@Google Onboarding Agent** MCP server in **Antigravity**:
+
+#### Step 1: Install the Package & MCP Binary Locally
+Clone the repository and install the package into a virtual environment so the `odb-mcp-server` executable is created:
+
+```bash
+git clone https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent.git
+cd oracle-at-google-onboarding-agent
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt && pip install -e .
+
+# Verify the exact absolute path to the MCP server entrypoint
+realpath .venv/bin/odb-mcp-server
+```
+
+#### Step 2: Add `oracle-google-onboarding-agent` to Antigravity's `mcp_config.json`
+You can configure the MCP server via the Antigravity UI or by editing the configuration file directly:
+
+- **Via Antigravity UI**: In the Antigravity Agent side pane, click **Additional Options (`...`)** at the top right → **MCP Servers** → **Manage MCP Servers** (or **View raw config**) to open `mcp_config.json`.
+- **Via Config File Directly**: Open `~/.gemini/config/mcp_config.json` (or `~/.gemini/antigravity/mcp_config.json` depending on your environment).
+
+Add the `oracle-google-onboarding-agent` entry under `"mcpServers"` (replace `/ABSOLUTE/PATH/TO/...` with the output of `realpath .venv/bin/odb-mcp-server` and your target workspace directory):
+
+```json
+{
+  "mcpServers": {
+    "oracle-google-onboarding-agent": {
+      "command": "/ABSOLUTE/PATH/TO/oracle-at-google-onboarding-agent/.venv/bin/odb-mcp-server",
+      "args": [],
+      "env": {
+        "ODB_WORKSPACE_ROOT": "/ABSOLUTE/PATH/TO/YOUR/TERRAFORM_WORKSPACE",
+        "ODB_AGENT_MODEL": "gemini-3.8-flash",
+        "ODB_FAST_VALIDATION": "1"
+      }
+    }
+  }
+}
+```
+
+> **Alternative Command**: You can also invoke the CLI entrypoint directly by setting `"command": "/ABSOLUTE/PATH/TO/oracle-at-google-onboarding-agent/.venv/bin/odb-onboarding-agent"` and `"args": ["mcp-serve"]`.
+
+#### Step 3: Refresh & Verify Tool Discovery in Antigravity
+1. Save `mcp_config.json`.
+2. In the Antigravity Agent pane, navigate to **Additional Options (`...`) > MCP Servers** and click **Refresh** (or start a new conversation).
+3. Confirm that **`oracle-google-onboarding-agent`** shows a green connected status and lists all 9 tools (`get_odb_onboarding_guide`, `evaluate_onboarding_readiness`, `generate_odb_diagram`, `generate_golden_terraform`, `validate_odb_network_cidrs`, `validate_odb_terraform_hcl`, `inspect_day2_workspace`, `analyze_day2_terraform_diff`, and `list_odb_provider_resources`).
+4. *(Optional)* To sanity-check the `stdio` server from your terminal before connecting:
+   ```bash
+   echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | .venv/bin/odb-mcp-server
+   ```
+
+#### Step 4: Invoke the MCP Tools from Antigravity Chat
+Once connected, Antigravity automatically discovers and invokes the MCP tools when you ask questions such as:
+- *"Use `evaluate_onboarding_readiness` to check our readiness for an Exadata Dedicated deployment in `us-east4` using a Shared VPC and CMEK."*
+- *"Generate a hub-and-spoke HA/DR architecture diagram for Oracle Database@Google Cloud using `generate_odb_diagram`."*
+- *"Use `generate_golden_terraform` to create a Day-1 Autonomous Database (`adb`) Terraform bundle for project `my-odb-prod`."*
+- *"Run `inspect_day2_workspace` on `./output/odb-golden-bundle` and check for `ForceNew` replacement risks."*
+
+---
 
 ### VS Code (`.vscode/mcp.json`) or Cursor (`.cursor/mcp.json`)
-Create `.vscode/mcp.json` in your project workspace:
+Create `.vscode/mcp.json` (or `.cursor/mcp.json`) in your project workspace:
 
 ```json
 {
@@ -141,15 +203,15 @@ Create `.vscode/mcp.json` in your project workspace:
 ### MCP Tools Exposed to Your IDE
 | MCP Tool | Purpose | Safety Guardrail |
 | :--- | :--- | :--- |
-| `get_onboarding_and_architecture_guide` | Grounded answers on Prerequisites, Marketplace (Private Offer vs PAYG), OCI Linking, MOS/CSI Support, ODB Networks, Backup, CMEK, Monitoring | Read-only knowledge base |
-| `evaluate_onboarding_readiness` | Evaluates customer onboarding readiness (0–100 score + missing checklist items) | Read-only evaluator |
-| `generate_architecture_diagram` | Generates syntax-verified Mermaid (`mermaid`) and ASCII diagrams | Workspace path sandboxed |
-| `generate_golden_terraform` | Generates verified Day-1 Golden Terraform (`main.tf`, `variables.tf`, `outputs.tf`, `versions.tf`) in `./output/<bundle>` | Fast validation (`<50ms`), concise summary, workspace sandboxed |
-| `validate_odb_terraform` | Validates HCL against `EXACT_ODB_RESOURCE_SCHEMAS`, `/28` subnet rules, and secret-leak rules | Fast validation (`<50ms`), read-only |
+| `get_odb_onboarding_guide` | Grounded answers on Prerequisites, Marketplace (Private Offer vs PAYG), OCI Linking, MOS/CSI Support, ODB Networks, Backup, CMEK, Monitoring | Read-only knowledge base |
+| `evaluate_onboarding_readiness` | Evaluates customer onboarding readiness (0–100 score + missing checklist items & `gcloud` bootstrap commands) | Read-only evaluator |
+| `generate_odb_diagram` | Generates syntax-verified Mermaid (`mermaid`) and ASCII architecture/onboarding diagrams | Workspace path sandboxed |
+| `generate_golden_terraform` | Generates verified Day-1 Golden Terraform (`networking.tf`, `workload.tf`, `variables.tf`, `outputs.tf`, `versions.tf`) in `./output/<bundle>` | Fast validation (`<50ms`), concise summary, workspace sandboxed |
+| `validate_odb_terraform_hcl` | Validates HCL against `EXACT_ODB_RESOURCE_SCHEMAS`, `/28` subnet rules, and secret-leak rules | Fast validation (`<50ms`), read-only |
+| `validate_odb_network_cidrs` | Validates VPC, `CLIENT_SUBNET`, and `BACKUP_SUBNET` CIDR math (`/28` minimum, non-overlapping) | Read-only |
 | `inspect_day2_workspace` | Audits `.tf` files in workspace for `deletion_protection` and `ForceNew` risks | Workspace path sandboxed, read-only |
-| `analyze_day2_diff` | Compares Before vs. After HCL to block accidental database destruction (`ForceNew`) | Read-only |
-| `inspect_odb_provider_schema` | Returns live `hashicorp/google` version and exact `top_level` vs `properties {}` schemas | Read-only |
-| `check_subnet_cidr_compliance` | Validates VPC, `CLIENT_SUBNET`, and `BACKUP_SUBNET` CIDR math | Read-only |
+| `analyze_day2_terraform_diff` | Compares Before vs. After HCL to block accidental database destruction (`ForceNew`) | Read-only |
+| `list_odb_provider_resources` | Lists all `google_oracle_database_*` resources in `hashicorp/google` and exact `top_level` vs `properties {}` schemas | Read-only |
 
 ---
 
