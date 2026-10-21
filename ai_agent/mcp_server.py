@@ -42,7 +42,8 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
         "name": "get_odb_onboarding_guide",
         "description": (
             "Retrieves authoritative, hallucination-free guidance for Oracle Database@Google Cloud (ODB@GCP) "
-            "covering Prerequisites & IAM, Marketplace Private Offer vs. Pay-As-You-Go (PAYG), OCI Account Linking, "
+            "covering Prerequisites & IAM, Enterprise Separation of Duties (Procurement, Network, Infrastructure, Database teams), "
+            "Marketplace Private Offer vs. Pay-As-You-Go (PAYG), OCI Account Linking, "
             "My Oracle Support (MOS) CSI Registration, ODB Networks & Topologies, Backup & Recovery, "
             "Encryption & CMEK (Cloud KMS / OCI Vault), and Monitoring."
         ),
@@ -52,8 +53,8 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
                 "topic": {
                     "type": "string",
                     "description": (
-                        "Topic to query: 'all', 'prerequisites_and_iam', 'marketplace_procurement', "
-                        "'account_linking_and_tenancy', 'support_registration_mos', "
+                        "Topic to query: 'all', 'prerequisites_and_iam', 'separation_of_duties', "
+                        "'marketplace_procurement', 'account_linking_and_tenancy', 'support_registration_mos', "
                         "'odb_networks_and_topologies', 'backup_and_recovery', "
                         "'encryption_and_cmek', or 'monitoring_and_observability'."
                     ),
@@ -65,9 +66,9 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
     {
         "name": "evaluate_onboarding_readiness",
         "description": (
-            "Generates a customized step-by-step ODB@GCP Onboarding Readiness Checklist and gcloud bootstrap "
-            "commands tailored to the customer's project, Marketplace model (private_offer vs payg), "
-            "networking topology (standalone_vpc, shared_vpc, hub_and_spoke), workload, and encryption mode."
+            "Generates a customized step-by-step ODB@GCP Onboarding Readiness Checklist, Separation-of-Duties plan, "
+            "and gcloud bootstrap commands tailored to the customer's project, Marketplace model (private_offer vs payg), "
+            "networking topology (standalone_vpc, shared_vpc, hub_and_spoke), workload, encryption mode, and team_role."
         ),
         "inputSchema": {
             "type": "object",
@@ -92,6 +93,14 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "'google_managed' or 'cmek'",
                     "default": "google_managed",
+                },
+                "team_role": {
+                    "type": "string",
+                    "description": (
+                        "Enterprise Separation-of-Duties persona: 'full_stack' (default), "
+                        "'network', 'infrastructure', 'database', or 'procurement'."
+                    ),
+                    "default": "full_stack",
                 },
             },
         },
@@ -130,9 +139,10 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
         "name": "generate_golden_terraform",
         "description": (
             "Generates a production-ready, schema-verified Golden Terraform bundle (`hashicorp/google >= 7.0.0`) "
-            "for ODB@GCP inside the open workspace (`./output/<bundle_name>`), runs fast anti-hallucination and "
-            "HCL syntax validation, and returns a concise summary pointing to the output directory. "
-            "NOTE: Never runs `terraform apply` or `destroy`."
+            "for ODB@GCP inside the open workspace (`./output/<bundle_name>`), supporting both monolithic "
+            "(`deployment_layer='full_stack'`) and Enterprise Separation-of-Duties layers (`'network_only'`, "
+            "`'infra_only'`, `'database_only'`). Runs fast anti-hallucination and HCL syntax validation, and "
+            "returns a concise summary pointing to the output directory. NOTE: Never runs `terraform apply` or `destroy`."
         ),
         "inputSchema": {
             "type": "object",
@@ -143,6 +153,14 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
                     "description": "One of: 'adb', 'exadata_dedicated', 'exascale', 'basedb'.",
                     "default": "adb",
                 },
+                "deployment_layer": {
+                    "type": "string",
+                    "description": (
+                        "Separation-of-Duties layer: 'full_stack' (default), 'network_only' (Network Team), "
+                        "'infra_only' (Infrastructure Team), or 'database_only' (Database Team)."
+                    ),
+                    "default": "full_stack",
+                },
                 "region": {"type": "string", "default": "us-east4"},
                 "gcp_oracle_zone": {"type": "string", "default": "us-east4-b-r1"},
                 "environment_prefix": {"type": "string", "default": "odb-prod"},
@@ -151,6 +169,26 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
                 "client_subnet_cidr": {"type": "string", "default": "10.20.1.0/24"},
                 "backup_subnet_cidr": {"type": "string", "default": "10.20.2.0/24"},
                 "shared_vpc_host_project_id": {"type": "string", "default": ""},
+                "existing_odb_network": {
+                    "type": "string",
+                    "description": "Pre-existing ODB Network resource name/ID handed off by the Network Team (for database_only).",
+                    "default": "",
+                },
+                "existing_client_odb_subnet": {
+                    "type": "string",
+                    "description": "Pre-existing CLIENT_SUBNET resource name/ID handed off by the Network Team (for database_only).",
+                    "default": "",
+                },
+                "existing_backup_odb_subnet": {
+                    "type": "string",
+                    "description": "Pre-existing BACKUP_SUBNET resource name/ID handed off by the Network Team (for database_only).",
+                    "default": "",
+                },
+                "existing_exadata_infrastructure": {
+                    "type": "string",
+                    "description": "Pre-existing Exadata Infrastructure or Exascale Vault resource name/ID handed off by the Infrastructure Team (for database_only).",
+                    "default": "",
+                },
                 "db_name": {"type": "string", "default": "ODBPROD1"},
                 "compute_count": {"type": "integer", "default": 4},
                 "storage_size_tb": {"type": "integer", "default": 1},
@@ -242,8 +280,8 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
         "name": "verify_live_onboarding_and_iam_readiness",
         "description": (
             "Performs a live pre-deployment readiness check against the customer's GCP project for enabled APIs "
-            "(`oracledatabase.googleapis.com`, `servicenetworking.googleapis.com`), missing ODB IAM permissions "
-            "(`roles/oracledatabase.admin`, `roles/oracledatabase.networkAdmin`, `roles/oracledatabase.autonomousDatabaseAdmin`), "
+            "(`oracledatabase.googleapis.com`, `servicenetworking.googleapis.com`), least-privilege ODB IAM permissions "
+            "scoped to `team_role` (`full_stack`, `network`, `infrastructure`, `database`, or `procurement`), "
             "and Marketplace Private Offer / OCI Account Link verification."
         ),
         "inputSchema": {
@@ -259,6 +297,14 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional user or service account email to inspect IAM bindings for.",
                     "default": "",
+                },
+                "team_role": {
+                    "type": "string",
+                    "description": (
+                        "Separation-of-Duties team persona to verify least-privilege IAM roles for: "
+                        "'full_stack' (default), 'network', 'infrastructure', 'database', or 'procurement'."
+                    ),
+                    "default": "full_stack",
                 },
             },
             "required": ["project_id"],
@@ -327,6 +373,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
                 networking_topology=str(args.get("networking_topology", "standalone_vpc")),
                 workload_type=str(args.get("workload_type", "adb")),
                 encryption_mode=str(args.get("encryption_mode", "google_managed")),
+                team_role=str(args.get("team_role", "full_stack")),
             )
             return {"isError": False, "content": [{"type": "text", "text": res_str}]}
 
@@ -380,6 +427,11 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
                 db_name=str(args.get("db_name", "ODBPROD1")),
                 compute_count=int(args.get("compute_count", 4)),
                 storage_size_tb=int(args.get("storage_size_tb", 1)),
+                deployment_layer=str(args.get("deployment_layer", "full_stack")),
+                existing_odb_network=str(args.get("existing_odb_network", "")),
+                existing_client_odb_subnet=str(args.get("existing_client_odb_subnet", "")),
+                existing_backup_odb_subnet=str(args.get("existing_backup_odb_subnet", "")),
+                existing_exadata_infrastructure=str(args.get("existing_exadata_infrastructure", "")),
             )
             gen_payload = json.loads(raw_gen)
             if not gen_payload.get("valid"):
@@ -410,6 +462,8 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
                 "saved": True,
                 "status": "GENERATED_AND_VERIFIED",
                 "workload_type": gen_payload.get("workload_type"),
+                "deployment_layer": gen_payload.get("deployment_layer", "full_stack"),
+                "team_role": gen_payload.get("team_role", "full_stack"),
                 "output_directory": save_payload.get("output_directory"),
                 "written_files": save_payload.get("written_files"),
                 "guardrail_checks": gen_payload.get("guardrail_checks"),
@@ -470,6 +524,7 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
                 project_id=str(args.get("project_id", "my-odb-project-01")),
                 workload_type=str(args.get("workload_type", "adb")),
                 principal_email=str(args.get("principal_email", "")),
+                team_role=str(args.get("team_role", "full_stack")),
             )
             parsed = json.loads(res_str)
             return {

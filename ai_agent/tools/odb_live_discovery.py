@@ -427,22 +427,25 @@ def verify_live_onboarding_and_iam_readiness(
     project_id: str,
     workload_type: str = "adb",
     principal_email: str = "",
+    team_role: str = "full_stack",
 ) -> str:
-    """Performs a live pre-deployment readiness check for ODB@GCP APIs, IAM permissions, and Marketplace/OCI link status.
+    """Performs a live pre-deployment readiness check for ODB@GCP APIs, IAM permissions (with Separation of Duties), and Marketplace/OCI link status.
 
     Args:
         project_id: Target Google Cloud project ID.
         workload_type: Target Oracle workload (`adb`, `exadata_dedicated`, `exascale`, `basedb`).
         principal_email: Optional IAM user/service-account email to inspect (defaults to active `gcloud` account).
+        team_role: Separation-of-Duties persona to evaluate: `'full_stack'` (default), `'network'`, `'infrastructure'`, `'database'`, or `'procurement'`.
 
     Returns:
-        JSON string detailing API status, Marketplace/OCI link status, missing ODB IAM roles, and exact `gcloud` fix commands.
+        JSON string detailing API status, Marketplace/OCI link status, team-scoped missing ODB IAM roles, and exact `gcloud` fix commands.
     """
     cleaned_project = (project_id or "").strip()
     if not _PROJECT_ID_PATTERN.match(cleaned_project):
         return json.dumps({"valid": False, "error": f"Invalid GCP project_id '{cleaned_project}'."}, indent=2)
 
     workload = (workload_type or "adb").strip().lower()
+    role_scope = (team_role or "full_stack").strip().lower()
     api_report = json.loads(check_customer_gcp_readiness(cleaned_project))
 
     gcloud_bin = shutil.which("gcloud")
@@ -461,15 +464,43 @@ def verify_live_onboarding_and_iam_readiness(
         except (OSError, subprocess.SubprocessError):
             active_account = ""
 
-    required_odb_roles = [
-        "roles/oracledatabase.admin",
-        "roles/oracledatabase.networkAdmin",
-        "roles/compute.networkAdmin",
-    ]
-    if workload == "adb":
-        required_odb_roles.append("roles/oracledatabase.autonomousDatabaseAdmin")
-    elif workload in {"exadata_dedicated", "exascale"}:
-        required_odb_roles.append("roles/oracledatabase.exadataAdmin")
+    # Determine required IAM roles based on Separation-of-Duties team_role
+    if role_scope == "network":
+        required_odb_roles = [
+            "roles/oracledatabase.networkAdmin",
+            "roles/compute.networkAdmin",
+        ]
+    elif role_scope in {"infrastructure", "infra"}:
+        required_odb_roles = [
+            "roles/oracledatabase.exadataAdmin",
+            "roles/oracledatabase.viewer",
+        ]
+    elif role_scope in {"database", "db", "dba"}:
+        workload_admin_role = (
+            "roles/oracledatabase.autonomousDatabaseAdmin"
+            if workload == "adb"
+            else "roles/oracledatabase.exadataAdmin"
+        )
+        required_odb_roles = [
+            workload_admin_role,
+            "roles/oracledatabase.viewer",
+        ]
+    elif role_scope == "procurement":
+        required_odb_roles = [
+            "roles/billing.admin",
+            "roles/consumerprocurement.orderAdmin",
+        ]
+    else:
+        role_scope = "full_stack"
+        required_odb_roles = [
+            "roles/oracledatabase.admin",
+            "roles/oracledatabase.networkAdmin",
+            "roles/compute.networkAdmin",
+        ]
+        if workload == "adb":
+            required_odb_roles.append("roles/oracledatabase.autonomousDatabaseAdmin")
+        elif workload in {"exadata_dedicated", "exascale"}:
+            required_odb_roles.append("roles/oracledatabase.exadataAdmin")
 
     granted_roles: list[str] = []
     missing_odb_roles: list[str] = []
@@ -502,12 +533,32 @@ def verify_live_onboarding_and_iam_readiness(
         except Exception:
             iam_checked = False
 
-    has_odb_admin = "roles/oracledatabase.admin" in granted_roles
+    has_odb_admin = "roles/oracledatabase.admin" in granted_roles or "roles/owner" in granted_roles
+    has_viewer = any(
+        r in granted_roles
+        for r in (
+            "roles/oracledatabase.viewer",
+            "roles/oracledatabase.admin",
+            "roles/oracledatabase.networkAdmin",
+            "roles/oracledatabase.exadataAdmin",
+            "roles/oracledatabase.autonomousDatabaseAdmin",
+            "roles/viewer",
+            "roles/editor",
+            "roles/owner",
+        )
+    )
     for req_role in required_odb_roles:
-        if req_role not in granted_roles and not (
-            has_odb_admin and req_role.startswith("roles/oracledatabase.")
+        if req_role in granted_roles:
+            continue
+        if has_odb_admin and req_role.startswith("roles/oracledatabase."):
+            continue
+        if req_role == "roles/oracledatabase.viewer" and has_viewer:
+            continue
+        if req_role == "roles/compute.networkAdmin" and (
+            "roles/owner" in granted_roles or "roles/editor" in granted_roles
         ):
-            missing_odb_roles.append(req_role)
+            continue
+        missing_odb_roles.append(req_role)
 
     member_prefix = (
         f"serviceAccount:{active_account}"
@@ -524,10 +575,13 @@ def verify_live_onboarding_and_iam_readiness(
             "valid": True,
             "project_id": cleaned_project,
             "workload_type": workload,
+            "team_role": role_scope,
             "active_principal": active_account or "unknown",
             "api_readiness": api_report,
             "iam_readiness": {
                 "iam_policy_inspected": iam_checked,
+                "team_role_evaluated": role_scope,
+                "required_roles_for_team": required_odb_roles,
                 "granted_roles_for_principal": granted_roles,
                 "missing_odb_roles": missing_odb_roles,
                 "ready_for_odb_deployment": len(missing_odb_roles) == 0 and api_report.get("status") == "ready",
@@ -548,4 +602,5 @@ def verify_live_onboarding_and_iam_readiness(
         },
         indent=2,
     )
+
 

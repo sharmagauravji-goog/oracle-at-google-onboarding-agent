@@ -236,7 +236,7 @@ Now initialize and validate the Terraform bundle in ./output/odb-adb-demo, and r
 
 ## Suggested Additional Demo Flows for Internal Teams & Customers
 
-Below are **3 additional modular flows** (5–8 minutes each) that you can run standalone or append to Flow 1 depending on the audience (Security/Compliance teams, Platform Engineering teams, or Day-2 DBAs).
+Below are **4 additional modular flows** (5–8 minutes each) that you can run standalone or append to Flow 1 depending on the audience (Security/Compliance teams, Platform Engineering teams, Network/Infra/DBA teams, or Day-2 DBREs).
 
 ---
 
@@ -307,3 +307,32 @@ Below are **3 additional modular flows** (5–8 minutes each) that you can run s
    - **Result:**
      - **Approves** `compute_count: 4 -> 8` as a safe online Day-2 scaling operation.
      - **BLOCKS** the `odb_subnet` change (`CRITICAL: Modifying immutable ForceNew attribute 'odb_subnet' will force Terraform to DESTROY and RECREATE the live database!`) and flags `deletion_protection = false` as a high-severity production risk.
+
+---
+
+### Demo Flow 5: Enterprise Separation of Duties Across Network, Infrastructure, and Database Teams (8 Mins)
+
+**Best For:** Large enterprise customers where **Network**, **Infrastructure**, and **Database (DBA)** teams operate independent Terraform workspaces and follow strict least-privilege IAM boundaries.
+
+1. **Step 1 — Query the Separation-of-Duties IAM & Resource Matrix:**
+   - **Customer Prompt:** *"In our organization, the Network team creates ODB Networks, the Infrastructure team creates Exadata Infrastructure, and the Database team creates VM Clusters and Autonomous Databases. How does the agent support Separation of Duties across IAM roles and Terraform state?"*
+   - **MCP Tool Triggered:** `get_odb_onboarding_guide(topic="separation_of_duties")`
+   - **Result:** Displays the 4-team enterprise matrix (`procurement`, `network`, `infrastructure`, `database`) showing least-privilege IAM roles, owned Terraform resources, and handoff outputs (`odb_network_name`, `client_odb_subnet_name`, `backup_odb_subnet_name`, `exadata_infrastructure_name`).
+2. **Step 2 — Scoped Least-Privilege IAM Verification for the DBA Team (`team_role="database"`):**
+   - **Customer Prompt:** *"Check live IAM readiness in project `ad-auth-project` specifically for our Database Team (`team_role='database'`) deploying an Autonomous Database (`adb`) for principal `dba-team@example.com`."*
+   - **MCP Tool Triggered:** `verify_live_onboarding_and_iam_readiness(project_id="ad-auth-project", workload_type="adb", team_role="database", principal_email="dba-team@example.com")`
+   - **Result:** Verifies only `roles/oracledatabase.autonomousDatabaseAdmin` and `roles/oracledatabase.viewer` (without falsely requiring the DBA team to hold `roles/compute.networkAdmin` or `roles/oracledatabase.networkAdmin`).
+3. **Step 3 — Layered Terraform Generation (`network_only` → `infra_only` → `database_only`):**
+   - **Customer Prompt:**
+     ```text
+     Generate three separate Separation-of-Duties Terraform bundles for Exadata Dedicated in project ad-auth-project:
+     1. Network Team bundle (deployment_layer="network_only") in ./output/sod-1-network
+     2. Infrastructure Team bundle (deployment_layer="infra_only") in ./output/sod-2-infra
+     3. Database Team bundle (deployment_layer="database_only") in ./output/sod-3-database referencing the Network and Infrastructure team handoff outputs.
+     ```
+   - **MCP Tool Triggered:** `generate_golden_terraform` (invoked 3 times with `deployment_layer="network_only"`, `"infra_only"`, and `"database_only"`).
+   - **Result:**
+     - `./output/sod-1-network/`: Contains only `networking.tf` (`google_oracle_database_odb_network` + `CLIENT_SUBNET` + `BACKUP_SUBNET`) and exports handoff outputs (`odb_network_name`, `client_odb_subnet_name`, `backup_odb_subnet_name`) with zero database credentials in state.
+     - `./output/sod-2-infra/`: Contains only `google_oracle_database_cloud_exadata_infrastructure` and exports `exadata_infrastructure_name`.
+     - `./output/sod-3-database/`: Contains only `google_oracle_database_cloud_vm_cluster` referencing `var.existing_odb_network`, `var.existing_client_odb_subnet`, `var.existing_backup_odb_subnet`, and `var.existing_exadata_infrastructure` so the DBA team never touches or recreates network or physical rack resources.
+

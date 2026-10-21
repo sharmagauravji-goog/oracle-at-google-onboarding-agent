@@ -183,7 +183,7 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <pre>   terraform -chdir=./output/odb-adb-demo apply tfplan</pre>
 <hr/>
 <h2>Suggested Additional Demo Flows for Internal Teams &amp; Customers</h2>
-<p>Below are <b>3 additional modular flows</b> (5–8 minutes each) that you can run standalone or append to Flow 1 depending on the audience (Security/Compliance teams, Platform Engineering teams, or Day-2 DBAs).</p>
+<p>Below are <b>4 additional modular flows</b> (5–8 minutes each) that you can run standalone or append to Flow 1 depending on the audience (Security/Compliance teams, Platform Engineering teams, Network/Infra/DBA teams, or Day-2 DBREs).</p>
 <hr/>
 <h3>Demo Flow 2: Regulated Enterprise Exadata Dedicated on Shared VPC + Cloud KMS (CMEK) + RMAN Backups (8 Mins)</h3>
 <p><b>Best For:</b> Financial Services, Healthcare, and Public Sector customers with strict Shared VPC and Customer-Managed Encryption Key (CMEK) mandates.</p>
@@ -240,4 +240,26 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <p style='margin: 4px 0 4px 18px;'>• <b>Result:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Approves</b> <code>compute_count: 4 -&gt; 8</code> as a safe online Day-2 scaling operation.</p>
 <p style='margin: 4px 0 4px 18px;'>• <b>BLOCKS</b> the <code>odb_subnet</code> change (<code>CRITICAL: Modifying immutable ForceNew attribute &#x27;odb_subnet&#x27; will force Terraform to DESTROY and RECREATE the live database!</code>) and flags <code>deletion_protection = false</code> as a high-severity production risk.</p>
+<hr/>
+<h3>Demo Flow 5: Enterprise Separation of Duties Across Network, Infrastructure, and Database Teams (8 Mins)</h3>
+<p><b>Best For:</b> Large enterprise customers where <b>Network</b>, <b>Infrastructure</b>, and <b>Database (DBA)</b> teams operate independent Terraform workspaces and follow strict least-privilege IAM boundaries.</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 1 — Query the Separation-of-Duties IAM &amp; Resource Matrix:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;In our organization, the Network team creates ODB Networks, the Infrastructure team creates Exadata Infrastructure, and the Database team creates VM Clusters and Autonomous Databases. How does the agent support Separation of Duties across IAM roles and Terraform state?&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>get_odb_onboarding_guide(topic=&quot;separation_of_duties&quot;)</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Displays the 4-team enterprise matrix (<code>procurement</code>, <code>network</code>, <code>infrastructure</code>, <code>database</code>) showing least-privilege IAM roles, owned Terraform resources, and handoff outputs (<code>odb_network_name</code>, <code>client_odb_subnet_name</code>, <code>backup_odb_subnet_name</code>, <code>exadata_infrastructure_name</code>).</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 2 — Scoped Least-Privilege IAM Verification for the DBA Team (<code>team_role=&quot;database&quot;</code>):</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;Check live IAM readiness in project <code>ad-auth-project</code> specifically for our Database Team (<code>team_role=&#x27;database&#x27;</code>) deploying an Autonomous Database (<code>adb</code>) for principal <code>dba-team@example.com</code>.&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;ad-auth-project&quot;, workload_type=&quot;adb&quot;, team_role=&quot;database&quot;, principal_email=&quot;dba-team@example.com&quot;)</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Verifies only <code>roles/oracledatabase.autonomousDatabaseAdmin</code> and <code>roles/oracledatabase.viewer</code> (without falsely requiring the DBA team to hold <code>roles/compute.networkAdmin</code> or <code>roles/oracledatabase.networkAdmin</code>).</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Step 3 — Layered Terraform Generation (<code>network_only</code> → <code>infra_only</code> → <code>database_only</code>):</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b></p>
+<pre>     Generate three separate Separation-of-Duties Terraform bundles for Exadata Dedicated in project ad-auth-project:
+     1. Network Team bundle (deployment_layer=&quot;network_only&quot;) in ./output/sod-1-network
+     2. Infrastructure Team bundle (deployment_layer=&quot;infra_only&quot;) in ./output/sod-2-infra
+     3. Database Team bundle (deployment_layer=&quot;database_only&quot;) in ./output/sod-3-database referencing the Network and Infrastructure team handoff outputs.</pre>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>generate_golden_terraform</code> (invoked 3 times with <code>deployment_layer=&quot;network_only&quot;</code>, <code>&quot;infra_only&quot;</code>, and <code>&quot;database_only&quot;</code>).</p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Result:</b></p>
+<p style='margin: 4px 0 4px 18px;'>• <code>./output/sod-1-network/</code>: Contains only <code>networking.tf</code> (<code>google_oracle_database_odb_network</code> + <code>CLIENT_SUBNET</code> + <code>BACKUP_SUBNET</code>) and exports handoff outputs (<code>odb_network_name</code>, <code>client_odb_subnet_name</code>, <code>backup_odb_subnet_name</code>) with zero database credentials in state.</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>./output/sod-2-infra/</code>: Contains only <code>google_oracle_database_cloud_exadata_infrastructure</code> and exports <code>exadata_infrastructure_name</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• <code>./output/sod-3-database/</code>: Contains only <code>google_oracle_database_cloud_vm_cluster</code> referencing <code>var.existing_odb_network</code>, <code>var.existing_client_odb_subnet</code>, <code>var.existing_backup_odb_subnet</code>, and <code>var.existing_exadata_infrastructure</code> so the DBA team never touches or recreates network or physical rack resources.</p>
 </body></html>

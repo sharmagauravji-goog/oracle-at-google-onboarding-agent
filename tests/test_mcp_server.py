@@ -106,3 +106,86 @@ def test_mcp_generate_golden_returns_concise_summary_and_enforces_workspace_cont
     escape_payload = json.loads(escape_resp["result"]["content"][0]["text"])
     assert escape_payload["saved"] is False
     assert "Path traversal blocked" in escape_payload["error"]
+
+
+def test_mcp_separation_of_duties_layers_and_team_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ODB_WORKSPACE_ROOT", str(tmp_path))
+
+    # 1. Generate Network Team bundle via MCP
+    net_resp = handle_jsonrpc_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "tools/call",
+            "params": {
+                "name": "generate_golden_terraform",
+                "arguments": {
+                    "project_id": "my-odb-project-01",
+                    "workload_type": "adb",
+                    "deployment_layer": "network_only",
+                    "output_dir": "./output",
+                    "bundle_name": "mcp-network-team",
+                },
+            },
+        }
+    )
+    assert net_resp is not None
+    assert net_resp["result"]["isError"] is False
+    net_payload = json.loads(net_resp["result"]["content"][0]["text"])
+    assert net_payload["deployment_layer"] == "network_only"
+    assert net_payload["team_role"] == "network"
+    assert "networking.tf" in net_payload["written_files"]
+    assert "workload.tf" not in net_payload["written_files"]
+
+    # 2. Generate Database Team bundle via MCP referencing Network Team outputs
+    db_resp = handle_jsonrpc_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "generate_golden_terraform",
+                "arguments": {
+                    "project_id": "my-odb-project-01",
+                    "workload_type": "adb",
+                    "deployment_layer": "database_only",
+                    "existing_odb_network": "projects/my-odb-project-01/locations/us-east4/odbNetworks/odb-prod-odb-net",
+                    "existing_client_odb_subnet": "projects/my-odb-project-01/locations/us-east4/odbNetworks/odb-prod-odb-net/odbSubnets/odb-prod-client-subnet",
+                    "output_dir": "./output",
+                    "bundle_name": "mcp-database-team",
+                },
+            },
+        }
+    )
+    assert db_resp is not None
+    assert db_resp["result"]["isError"] is False
+    db_payload = json.loads(db_resp["result"]["content"][0]["text"])
+    assert db_payload["deployment_layer"] == "database_only"
+    assert db_payload["team_role"] == "database"
+    assert "workload.tf" in db_payload["written_files"]
+    assert "networking.tf" not in db_payload["written_files"]
+
+    # 3. Evaluate readiness scoped to database team_role via MCP
+    ready_resp = handle_jsonrpc_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tools/call",
+            "params": {
+                "name": "evaluate_onboarding_readiness",
+                "arguments": {
+                    "project_id": "my-odb-project-01",
+                    "workload_type": "adb",
+                    "team_role": "database",
+                },
+            },
+        }
+    )
+    assert ready_resp is not None
+    assert ready_resp["result"]["isError"] is False
+    ready_payload = json.loads(ready_resp["result"]["content"][0]["text"])
+    assert ready_payload["team_role"] == "database"
+    assert ready_payload["separation_of_duties_plan"]["team_role"] == "database"
+

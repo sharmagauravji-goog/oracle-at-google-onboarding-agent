@@ -319,11 +319,20 @@ def inspect_provider(
 def generate_golden(
     project_id: str = typer.Option(..., "--project-id", help="Target GCP project ID."),
     workload: str = typer.Option("adb", "--workload", help="Workload: adb, exadata_dedicated, exascale, or basedb."),
+    layer: str = typer.Option(
+        "full_stack",
+        "--layer",
+        help="Separation-of-Duties layer: full_stack (default), network_only, infra_only, or database_only.",
+    ),
     region: str = typer.Option("us-east4", "--region", help="Target GCP region."),
     oracle_zone: str = typer.Option("us-east4-b-r1", "--oracle-zone", help="Target gcp_oracle_zone."),
     vpc_cidr: str = typer.Option("10.10.0.0/16", "--vpc-cidr", help="Customer VPC CIDR."),
     client_cidr: str = typer.Option("10.20.1.0/24", "--client-cidr", help="ODB Client Subnet CIDR (min /28)."),
     backup_cidr: str = typer.Option("10.20.2.0/24", "--backup-cidr", help="ODB Backup Subnet CIDR (min /28)."),
+    existing_odb_network: str = typer.Option("", "--existing-odb-network", help="Pre-existing ODB Network resource name (for database_only)."),
+    existing_client_subnet: str = typer.Option("", "--existing-client-subnet", help="Pre-existing CLIENT_SUBNET resource name (for database_only)."),
+    existing_backup_subnet: str = typer.Option("", "--existing-backup-subnet", help="Pre-existing BACKUP_SUBNET resource name (for database_only)."),
+    existing_exadata_infra: str = typer.Option("", "--existing-exadata-infra", help="Pre-existing Exadata Infra / Exascale Vault resource name (for database_only)."),
     output_dir: str = typer.Option("./output", "--output-dir", help="Relative directory inside the active workspace."),
     bundle_name: str = typer.Option("odb-golden-bundle", "--bundle-name", help="Subdirectory under --output-dir."),
 ) -> None:
@@ -336,6 +345,11 @@ def generate_golden(
         vpc_cidr=vpc_cidr,
         client_subnet_cidr=client_cidr,
         backup_subnet_cidr=backup_cidr,
+        deployment_layer=layer,
+        existing_odb_network=existing_odb_network,
+        existing_client_odb_subnet=existing_client_subnet,
+        existing_backup_odb_subnet=existing_backup_subnet,
+        existing_exadata_infrastructure=existing_exadata_infra,
     )
     payload = json.loads(raw_res)
     if not payload.get("valid"):
@@ -358,7 +372,8 @@ def generate_golden(
     console.print(
         Panel.fit(
             f"[bold green]Golden Terraform Bundle Generated & Verified![/bold green]\n"
-            f"Workload: [bold]{workload}[/bold] | Output Directory: [bold cyan]{save_res.get('output_directory')}[/bold cyan]\n"
+            f"Workload: [bold]{workload}[/bold] | Layer: [bold yellow]{payload.get('deployment_layer')}[/bold yellow] | "
+            f"Output Directory: [bold cyan]{save_res.get('output_directory')}[/bold cyan]\n"
             f"Files: {', '.join(save_res.get('written_files', []))}\n"
             f"Guardrail Validation: [bold green]{'PASSED' if val_res.get('valid') else 'FAILED'}[/bold green]",
             border_style="green",

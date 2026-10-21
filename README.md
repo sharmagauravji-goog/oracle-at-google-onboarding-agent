@@ -8,11 +8,16 @@ An LLM-powered **Oracle@Google Onboarding Agent** built on the official [`google
 
 ## Key Capabilities of the Oracle@Google Onboarding Agent
 
-### 1. End-to-End Onboarding Lifecycle Guidance (Anti-Hallucination Grounded)
-- **Prerequisites & IAM (`prerequisites`)**: Google Cloud Billing Account, Organization Policies (`constraints/compute.vmExternalIpAccess`, Shared VPC constraints), API enablement (`oracledatabase.googleapis.com`, `compute.googleapis.com`, `servicenetworking.googleapis.com`, `cloudkms.googleapis.com`, `monitoring.googleapis.com`, `logging.googleapis.com`), and exact IAM roles (`roles/oracledatabase.admin`, `roles/compute.networkAdmin`, `roles/billing.admin`).
+### 1. End-to-End Onboarding Lifecycle & Enterprise Separation of Duties (Anti-Hallucination Grounded)
+- **Prerequisites & IAM (`prerequisites_and_iam`)**: Google Cloud Billing Account, Organization Policies (`constraints/compute.vmExternalIpAccess`, Shared VPC constraints), API enablement (`oracledatabase.googleapis.com`, `compute.googleapis.com`, `servicenetworking.googleapis.com`, `cloudkms.googleapis.com`, `monitoring.googleapis.com`, `logging.googleapis.com`), and exact IAM roles (`roles/oracledatabase.admin`, `roles/compute.networkAdmin`, `roles/billing.admin`).
+- **Enterprise Separation of Duties (`separation_of_duties`)**: Maps least-privilege IAM roles, owned Terraform resources, separate state file boundaries, and cross-team handoff outputs (`odb_network_name`, `client_odb_subnet_name`, `backup_odb_subnet_name`, `exadata_infrastructure_name`) across four enterprise teams:
+  1. **Procurement / Billing Team (`team_role="procurement"`)**: `roles/billing.admin`, `roles/consumerprocurement.orderAdmin`, `roles/oracledatabase.admin` (for initial OCI account link).
+  2. **Network Team (`team_role="network"`, `deployment_layer="network_only"`)**: `roles/oracledatabase.networkAdmin` + `roles/compute.networkAdmin`; provisions `google_oracle_database_odb_network` and `google_oracle_database_odb_subnet`.
+  3. **Infrastructure Team (`team_role="infrastructure"`, `deployment_layer="infra_only"`)**: `roles/oracledatabase.exadataAdmin` + `roles/oracledatabase.viewer`; provisions `google_oracle_database_cloud_exadata_infrastructure` or `google_oracle_database_exascale_db_storage_vault`.
+  4. **Database / DBA Team (`team_role="database"`, `deployment_layer="database_only"`)**: `roles/oracledatabase.autonomousDatabaseAdmin` (or `roles/oracledatabase.exadataAdmin`) + `roles/oracledatabase.viewer`; provisions `google_oracle_database_autonomous_database`, `google_oracle_database_cloud_vm_cluster`, `google_oracle_database_exadb_vm_cluster`, or `google_oracle_database_db_system` consuming upstream network/infra variables without needing `roles/compute.networkAdmin`.
 - **Google Cloud Marketplace Procurement (`marketplace_procurement`)**: Side-by-side comparison and step-by-step workflow for **Private Offer** (custom negotiated pricing, CUD drawdown, multi-year terms) vs. **Pay-As-You-Go (PAYG)** (on-demand ECPU/storage billing).
-- **OCI Account Linking & Tenancy Federation (`account_linking`)**: Provisioning a new OCI tenancy vs. linking an existing OCI tenancy in the Partner Portal, control-plane IAM federation (`google_oracle_database_cloud_account` / Console onboarding), and billing unification on the Google Cloud invoice.
-- **My Oracle Support (MOS) & CSI Registration (`support_registration`)**: How the **Customer Support Identifier (CSI)** is generated after OCI linking, associating the CSI in `support.oracle.com`, and joint Google Cloud + Oracle collaborative support routing (`gcloud beta support` <-> MOS SR severity handoff).
+- **OCI Account Linking & Tenancy Federation (`account_linking_and_tenancy`)**: Provisioning a new OCI tenancy vs. linking an existing OCI tenancy in the Partner Portal, control-plane IAM federation (`google_oracle_database_cloud_account` / Console onboarding), and billing unification on the Google Cloud invoice.
+- **My Oracle Support (MOS) & CSI Registration (`support_registration_mos`)**: How the **Customer Support Identifier (CSI)** is generated after OCI linking, associating the CSI in `support.oracle.com`, and joint Google Cloud + Oracle collaborative support routing (`gcloud beta support` <-> MOS SR severity handoff).
 
 ### 2. Deep Architecture Domain Grounding
 - **ODB Networks & Enterprise Topologies (`odb_networks_and_topologies`)**:
@@ -40,9 +45,13 @@ Generates syntax-verified **Mermaid (`mermaid`)** and **ASCII** diagrams via CLI
 - `cmek_encryption_flow`: Google Cloud KMS CMEK key hierarchy, `gcp-sa-oracledatabase` IAM binding, and Oracle TDE wallet encryption.
 - `monitoring_and_observability_flow`: Dual-plane telemetry across Cloud Monitoring, Cloud Audit Logs, and Oracle AWR/Operations Insights.
 
-### 4. Production Terraform Generation & 5-Layer Anti-Hallucination Guardrails
-- **Golden Baseline Templates (`generate_golden_odb_terraform`)** for Autonomous Database 23ai (`adb`), Exadata Dedicated (`exadata_dedicated`), Exascale (`exascale`), and BaseDB (`basedb`).
-- **Exact `hashicorp/google` Schema Verification (`EXACT_ODB_RESOURCE_SCHEMAS`)** catching misplaced top-level vs. nested `properties {}` attributes and hallucinated arguments (`cpu_core_count`, `admin_password` in HCL, `cidr_range` instead of `cidr`).
+### 4. Production Terraform Generation (Monolithic & Layered Separation of Duties) + 5-Layer Anti-Hallucination Guardrails
+- **Golden Baseline Templates (`generate_golden_odb_terraform`)** for Autonomous Database 23ai (`adb`), Exadata Dedicated (`exadata_dedicated`), Exascale (`exascale`), and BaseDB (`basedb`), supporting both:
+  - **`deployment_layer="full_stack"` (Default)**: Complete single-bundle deployment (`networking.tf` + `workload.tf`).
+  - **`deployment_layer="network_only"` (Network Team)**: Generates only `networking.tf` (`google_oracle_database_odb_network` + `google_oracle_database_odb_subnet`) with handoff outputs and zero database passwords in state.
+  - **`deployment_layer="infra_only"` (Infrastructure Team)**: Generates only `google_oracle_database_cloud_exadata_infrastructure` or `google_oracle_database_exascale_db_storage_vault` with handoff outputs.
+  - **`deployment_layer="database_only"` (Database Team)**: Generates only `workload.tf` consuming `var.existing_odb_network`, `var.existing_client_odb_subnet`, `var.existing_backup_odb_subnet`, and `var.existing_exadata_infrastructure`.
+- **Exact `hashicorp/google` Schema Verification (`EXACT_ODB_RESOURCE_SCHEMAS`)** catching misplaced top-level vs. nested `properties {}` attributes and hallucinated arguments (`cpu_core_count`, `admin_password` in HCL, `odb_network` vs `odbnetwork`).
 - **Pre-Flight Network CIDR (`/28` minimum) + Secret Leak Guard + Strict Workspace Path Containment**.
 - **Compiler Auto-Repair Loop (`validate_terraform_hcl`)** and **Day-2 `ForceNew` Destructive Replacement Guard**.
 

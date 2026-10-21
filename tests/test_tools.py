@@ -356,3 +356,94 @@ def test_diagram_generator_all_types_and_workspace_sandbox(
     )
     assert escape_res["valid"] is False
     assert "Path traversal blocked" in escape_res["error"]
+
+
+def test_separation_of_duties_layered_terraform_generation_and_validation() -> None:
+    # 1. Network Team Layer (network_only)
+    net_res = json.loads(
+        generate_golden_odb_terraform(
+            project_id="my-odb-project-01",
+            region="us-east4",
+            workload_type="exadata_dedicated",
+            deployment_layer="network_only",
+        )
+    )
+    assert net_res["valid"] is True
+    assert net_res["deployment_layer"] == "network_only"
+    assert net_res["team_role"] == "network"
+    assert "networking.tf" in net_res["files"]
+    assert "workload.tf" not in net_res["files"]
+    assert "google_oracle_database_odb_network" in net_res["files"]["networking.tf"]
+    assert "google_oracle_database_odb_subnet" in net_res["files"]["networking.tf"]
+    assert "db_admin_password" not in net_res["files"]["variables.tf"]
+    net_val = json.loads(validate_terraform_hcl(json.dumps(net_res["files"]), fast_mode=True))
+    assert net_val["valid"] is True
+
+    # 2. Infrastructure Team Layer (infra_only)
+    infra_res = json.loads(
+        generate_golden_odb_terraform(
+            project_id="my-odb-project-01",
+            region="us-east4",
+            workload_type="exadata_dedicated",
+            deployment_layer="infra_only",
+        )
+    )
+    assert infra_res["valid"] is True
+    assert infra_res["deployment_layer"] == "infra_only"
+    assert infra_res["team_role"] == "infrastructure"
+    assert "workload.tf" in infra_res["files"]
+    assert "networking.tf" not in infra_res["files"]
+    assert (
+        "google_oracle_database_cloud_exadata_infrastructure"
+        in infra_res["files"]["workload.tf"]
+    )
+    assert (
+        "google_oracle_database_cloud_vm_cluster"
+        not in infra_res["files"]["workload.tf"]
+    )
+    infra_val = json.loads(validate_terraform_hcl(json.dumps(infra_res["files"]), fast_mode=True))
+    assert infra_val["valid"] is True
+
+    # 3. Database Team Layer (database_only) for ADB and Exadata Dedicated
+    for workload in ("adb", "exadata_dedicated", "exascale", "basedb"):
+        db_res = json.loads(
+            generate_golden_odb_terraform(
+                project_id="my-odb-project-01",
+                region="us-east4",
+                workload_type=workload,
+                deployment_layer="database_only",
+                existing_odb_network="projects/my-odb-project-01/locations/us-east4/odbNetworks/corp-odb-net",
+                existing_client_odb_subnet="projects/my-odb-project-01/locations/us-east4/odbNetworks/corp-odb-net/odbSubnets/corp-client-sub",
+            )
+        )
+        assert db_res["valid"] is True
+        assert db_res["deployment_layer"] == "database_only"
+        assert db_res["team_role"] == "database"
+        assert "workload.tf" in db_res["files"]
+        assert "networking.tf" not in db_res["files"]
+        assert "var.existing_odb_network" in db_res["files"]["workload.tf"]
+        assert "var.existing_client_odb_subnet" in db_res["files"]["workload.tf"]
+        assert "corp-odb-net" in db_res["files"]["terraform.tfvars"]
+        db_val = json.loads(validate_terraform_hcl(json.dumps(db_res["files"]), fast_mode=True))
+        assert db_val["valid"] is True
+
+
+def test_separation_of_duties_onboarding_readiness_by_team_role() -> None:
+    sod_guide = json.loads(get_odb_onboarding_and_architecture_guide("separation_of_duties"))
+    assert sod_guide["valid"] is True
+    assert "team_matrix" in sod_guide["guide"]
+    assert len(sod_guide["guide"]["team_matrix"]) == 4
+
+    for role in ("network", "infrastructure", "database", "procurement"):
+        readiness = json.loads(
+            evaluate_customer_onboarding_readiness(
+                project_id="my-odb-project-01",
+                workload_type="exadata_dedicated",
+                team_role=role,
+            )
+        )
+        assert readiness["valid"] is True
+        assert readiness["team_role"] == role
+        assert "separation_of_duties_plan" in readiness
+        assert readiness["separation_of_duties_plan"]["team_role"] == role
+

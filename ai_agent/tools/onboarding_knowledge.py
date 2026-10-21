@@ -45,13 +45,38 @@ ONBOARDING_KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
             "Account Linking & ODB Administration": [
                 "roles/oracledatabase.admin (Oracle Database Admin — full control over ODB resources and account linking)",
             ],
-            "Least-Privilege Operational Roles": [
-                "roles/oracledatabase.networkAdmin (create/manage ODB Networks and ODB Subnets)",
-                "roles/oracledatabase.autonomousDatabaseAdmin (create/manage Autonomous Databases)",
-                "roles/oracledatabase.exadataAdmin (create/manage Exadata Infrastructure & VM Clusters)",
-                "roles/oracledatabase.viewer (read-only access to ODB@GCP resources)",
-                "roles/compute.networkAdmin (or roles/compute.networkViewer + Shared VPC host permissions)",
+            "Least-Privilege Operational Roles (Separation of Duties)": [
+                "roles/oracledatabase.networkAdmin (Network Team — create/manage ODB Networks and ODB Subnets)",
+                "roles/compute.networkAdmin (Network Team — VPC peering / Shared VPC host network administration)",
+                "roles/oracledatabase.exadataAdmin (Infrastructure Team — create/manage Exadata Infrastructure & VM Clusters)",
+                "roles/oracledatabase.autonomousDatabaseAdmin (Database Team — create/manage Autonomous Databases)",
+                "roles/oracledatabase.viewer (Cross-Team Read-Only — allows Infra/DB teams to reference existing ODB Networks/Subnets)",
             ],
+        },
+        "separation_of_duties_by_team": {
+            "procurement_team": {
+                "iam_roles": ["roles/billing.admin", "roles/consumerprocurement.orderAdmin"],
+                "responsibilities": "Accepts Google Cloud Marketplace Private Offer or subscribes to Pay-As-You-Go (PAYG).",
+                "terraform_layer": "None (Console / Marketplace Order administration)",
+            },
+            "network_team": {
+                "iam_roles": ["roles/oracledatabase.networkAdmin", "roles/compute.networkAdmin"],
+                "responsibilities": "Provisions `google_oracle_database_odb_network` and `google_oracle_database_odb_subnet` (`CLIENT_SUBNET` and `BACKUP_SUBNET`).",
+                "terraform_layer": "network_only",
+                "handoff_outputs": ["odb_network_id", "odb_network_name", "client_odb_subnet_name", "backup_odb_subnet_name"],
+            },
+            "infrastructure_team": {
+                "iam_roles": ["roles/oracledatabase.exadataAdmin", "roles/oracledatabase.viewer"],
+                "responsibilities": "Provisions `google_oracle_database_cloud_exadata_infrastructure` (or `google_oracle_database_exascale_db_storage_vault`) and optionally VM clusters.",
+                "terraform_layer": "infra_only",
+                "handoff_outputs": ["exadata_infrastructure_id", "exadata_infrastructure_name", "exascale_vault_name"],
+            },
+            "database_team": {
+                "iam_roles": ["roles/oracledatabase.autonomousDatabaseAdmin", "roles/oracledatabase.exadataAdmin", "roles/oracledatabase.viewer"],
+                "responsibilities": "Provisions `google_oracle_database_autonomous_database`, `google_oracle_database_cloud_vm_cluster`, or `google_oracle_database_db_system` consuming existing ODB Network/Infra.",
+                "terraform_layer": "database_only",
+                "required_inputs_from_upstream_teams": ["existing_odb_network", "existing_client_odb_subnet", "existing_backup_odb_subnet", "existing_exadata_infrastructure"],
+            },
         },
         "gcloud_bootstrap_commands": [
             "gcloud services enable oracledatabase.googleapis.com compute.googleapis.com servicenetworking.googleapis.com cloudkms.googleapis.com monitoring.googleapis.com logging.googleapis.com --project=<PROJECT_ID>",
@@ -59,7 +84,77 @@ ONBOARDING_KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
         "anti_hallucination_rules": [
             "ODB@GCP uses the native Google Cloud API `oracledatabase.googleapis.com`, NOT custom third-party endpoints.",
             "Marketplace Private Offer acceptance requires BOTH `roles/billing.admin` (on the Billing Account) and `roles/consumerprocurement.orderAdmin`.",
+            "In enterprise Separation of Duties, downstream teams (Infra/Database) only need `roles/oracledatabase.viewer` on the ODB Network plus their workload admin role (`roles/oracledatabase.exadataAdmin` or `roles/oracledatabase.autonomousDatabaseAdmin`); they do NOT need `roles/compute.networkAdmin` or `roles/oracledatabase.networkAdmin`.",
         ],
+    },
+    "separation_of_duties": {
+        "title": "Enterprise Separation of Duties (Network Team vs. Infrastructure Team vs. Database Team)",
+        "summary": (
+            "Enterprise customers typically split Oracle Database@Google Cloud into isolated IAM roles and separate "
+            "Terraform state layers across Procurement/FinOps, Network Engineering, Infrastructure Engineering, and Database Administration (DBA)."
+        ),
+        "team_matrix": {
+            "1_procurement_and_account_linking": {
+                "persona": "Procurement / Cloud Governance Team",
+                "least_privilege_iam_roles": [
+                    "roles/billing.admin (on Billing Account)",
+                    "roles/consumerprocurement.orderAdmin (on Project/Org)",
+                    "roles/oracledatabase.admin (during initial OCI Account Linking handshake)",
+                ],
+                "owned_resources": ["Marketplace Private Offer / PAYG Entitlement", "OCI Tenancy Link (`cloudAccount`)"],
+            },
+            "2_network_team": {
+                "persona": "Network Engineering Team (`team_role='network'`, `deployment_layer='network_only'`)",
+                "least_privilege_iam_roles": [
+                    "roles/compute.networkAdmin (or Shared VPC Host/Service project `roles/compute.networkUser`)",
+                    "roles/oracledatabase.networkAdmin",
+                ],
+                "owned_terraform_resources": [
+                    "google_oracle_database_odb_network",
+                    "google_oracle_database_odb_subnet (CLIENT_SUBNET & BACKUP_SUBNET)",
+                ],
+                "exported_outputs_for_downstream_teams": [
+                    "odb_network_name (`projects/<PROJECT>/locations/<REGION>/odbNetworks/<ID>`)",
+                    "client_odb_subnet_name (`projects/<PROJECT>/locations/<REGION>/odbNetworks/<NET_ID>/odbSubnets/<SUB_ID>`)",
+                    "backup_odb_subnet_name (`projects/<PROJECT>/locations/<REGION>/odbNetworks/<NET_ID>/odbSubnets/<BACKUP_ID>`)",
+                ],
+            },
+            "3_infrastructure_team": {
+                "persona": "Exadata / Platform Infrastructure Team (`team_role='infrastructure'`, `deployment_layer='infra_only'`)",
+                "least_privilege_iam_roles": [
+                    "roles/oracledatabase.exadataAdmin",
+                    "roles/oracledatabase.viewer (to inspect ODB Networks/Zones)",
+                ],
+                "owned_terraform_resources": [
+                    "google_oracle_database_cloud_exadata_infrastructure",
+                    "google_oracle_database_exascale_db_storage_vault",
+                ],
+                "exported_outputs_for_downstream_teams": [
+                    "exadata_infrastructure_name (`projects/<PROJECT>/locations/<REGION>/cloudExadataInfrastructures/<ID>`)",
+                    "exascale_vault_name (`projects/<PROJECT>/locations/<REGION>/exascaleDbStorageVaults/<ID>`)",
+                ],
+            },
+            "4_database_team": {
+                "persona": "Database Administration (DBA) Team (`team_role='database'`, `deployment_layer='database_only'`)",
+                "least_privilege_iam_roles": [
+                    "roles/oracledatabase.autonomousDatabaseAdmin (for Autonomous Database)",
+                    "roles/oracledatabase.exadataAdmin (for Cloud VM Cluster / ExaDB VM Cluster)",
+                    "roles/oracledatabase.viewer (to read pre-provisioned ODB Network, Subnets & Exadata Infra)",
+                ],
+                "owned_terraform_resources": [
+                    "google_oracle_database_autonomous_database",
+                    "google_oracle_database_cloud_vm_cluster",
+                    "google_oracle_database_exadb_vm_cluster",
+                    "google_oracle_database_db_system",
+                ],
+                "consumed_variables_from_upstream_teams": [
+                    "var.existing_odb_network",
+                    "var.existing_client_odb_subnet",
+                    "var.existing_backup_odb_subnet",
+                    "var.existing_exadata_infrastructure",
+                ],
+            },
+        },
     },
     "marketplace_procurement": {
         "title": "Phase 2: Google Cloud Marketplace Procurement — Private Offer vs. Pay-As-You-Go (PAYG)",
@@ -335,6 +430,10 @@ def get_odb_onboarding_and_architecture_guide(topic: str = "all") -> str:
 
     # Fuzzy match if user passed a partial keyword like "cmek", "backup", "support", "marketplace", "network"
     keyword_map = {
+        "separation": "separation_of_duties",
+        "duties": "separation_of_duties",
+        "sod": "separation_of_duties",
+        "persona": "separation_of_duties",
         "prereq": "prerequisites_and_iam",
         "iam": "prerequisites_and_iam",
         "market": "marketplace_procurement",
@@ -401,6 +500,7 @@ def evaluate_customer_onboarding_readiness(
     marketplace_procurement_mode: str = "",
     has_linked_oci_tenancy: bool = True,
     has_mos_account_and_csi: bool = True,
+    team_role: str = "full_stack",
 ) -> str:
     """Generates a tailored End-to-End Onboarding Checklist & Readiness Score for a customer's ODB@GCP scenario.
 
@@ -415,9 +515,10 @@ def evaluate_customer_onboarding_readiness(
         marketplace_procurement_mode: Optional override for `procurement_model` (`private_offer`, `payg`, or `none`).
         has_linked_oci_tenancy: Whether the OCI tenancy is linked.
         has_mos_account_and_csi: Whether My Oracle Support (MOS) CSI is registered.
+        team_role: Optional Separation-of-Duties persona: `'full_stack'` (default), `'network'`, `'infrastructure'`, `'database'`, or `'procurement'`.
 
     Returns:
-        JSON string with readiness score, blocking items, ordered onboarding steps, and exact `gcloud` commands.
+        JSON string with readiness score, blocking items, ordered onboarding steps, Separation-of-Duties plan, and exact `gcloud` commands.
     """
     cleaned_project = (project_id or "my-odb-project-01").strip()
     if not _SAFE_PROJECT_ID_RE.match(cleaned_project):
@@ -427,6 +528,7 @@ def evaluate_customer_onboarding_readiness(
     net_topo = networking_topology.strip().lower()
     workload = workload_type.strip().lower()
     enc_mode = encryption_mode.strip().lower()
+    role_scope = (team_role or "full_stack").strip().lower()
 
     needs_backup_subnet = workload in {"exadata_dedicated", "exascale"}
 
@@ -459,13 +561,80 @@ def evaluate_customer_onboarding_readiness(
 
     readiness_score_pct = int((completed_checks / 5) * 100)
 
+    sod_plans: dict[str, dict[str, Any]] = {
+        "network": {
+            "team_role": "network",
+            "least_privilege_iam_roles": ["roles/oracledatabase.networkAdmin", "roles/compute.networkAdmin"],
+            "recommended_terraform_layer": "network_only",
+            "owned_resources": ["google_oracle_database_odb_network", "google_oracle_database_odb_subnet"],
+            "outputs_to_hand_off": ["odb_network_name", "client_odb_subnet_name", "backup_odb_subnet_name"],
+        },
+        "infrastructure": {
+            "team_role": "infrastructure",
+            "least_privilege_iam_roles": ["roles/oracledatabase.exadataAdmin", "roles/oracledatabase.viewer"],
+            "recommended_terraform_layer": "infra_only",
+            "owned_resources": [
+                "google_oracle_database_cloud_exadata_infrastructure",
+                "google_oracle_database_exascale_db_storage_vault",
+            ],
+            "outputs_to_hand_off": ["exadata_infrastructure_name", "exascale_vault_name"],
+        },
+        "database": {
+            "team_role": "database",
+            "least_privilege_iam_roles": (
+                ["roles/oracledatabase.autonomousDatabaseAdmin", "roles/oracledatabase.viewer"]
+                if workload == "adb"
+                else ["roles/oracledatabase.exadataAdmin", "roles/oracledatabase.viewer"]
+            ),
+            "recommended_terraform_layer": "database_only",
+            "owned_resources": [
+                "google_oracle_database_autonomous_database"
+                if workload == "adb"
+                else (
+                    "google_oracle_database_cloud_vm_cluster"
+                    if workload == "exadata_dedicated"
+                    else (
+                        "google_oracle_database_exadb_vm_cluster"
+                        if workload == "exascale"
+                        else "google_oracle_database_db_system"
+                    )
+                )
+            ],
+            "required_inputs_from_upstream_teams": [
+                "existing_odb_network",
+                "existing_client_odb_subnet",
+            ]
+            + (["existing_backup_odb_subnet", "existing_exadata_infrastructure"] if needs_backup_subnet else []),
+        },
+        "procurement": {
+            "team_role": "procurement",
+            "least_privilege_iam_roles": ["roles/billing.admin", "roles/consumerprocurement.orderAdmin"],
+            "recommended_terraform_layer": "none",
+            "owned_resources": ["Marketplace Private Offer / PAYG Entitlement"],
+        },
+    }
+    active_sod_plan = sod_plans.get(
+        role_scope,
+        {
+            "team_role": "full_stack",
+            "least_privilege_iam_roles": [
+                "roles/oracledatabase.admin",
+                "roles/compute.networkAdmin",
+                "roles/billing.admin",
+                "roles/consumerprocurement.orderAdmin",
+            ],
+            "recommended_terraform_layer": "full_stack",
+            "team_breakdown": sod_plans,
+        },
+    )
+
     steps: list[dict[str, Any]] = [
         {
             "step": 1,
-            "phase": "GCP Project & API Prerequisites",
+            "phase": "GCP Project & API Prerequisites (Separation of Duties Aware)",
             "actions": [
                 f"Enable required Google Cloud APIs in project `{cleaned_project}`.",
-                "Grant `roles/oracledatabase.admin` to the onboarding architect and `roles/billing.admin` + `roles/consumerprocurement.orderAdmin` to the Marketplace buyer.",
+                "Grant least-privilege IAM roles per team: Procurement (`roles/billing.admin` + `roles/consumerprocurement.orderAdmin`), Network Team (`roles/oracledatabase.networkAdmin` + `roles/compute.networkAdmin`), Infrastructure Team (`roles/oracledatabase.exadataAdmin` + `roles/oracledatabase.viewer`), Database Team (`roles/oracledatabase.autonomousDatabaseAdmin` + `roles/oracledatabase.viewer`), or `roles/oracledatabase.admin` for full-stack.",
             ],
             "commands": [
                 f"gcloud services enable oracledatabase.googleapis.com compute.googleapis.com servicenetworking.googleapis.com cloudkms.googleapis.com monitoring.googleapis.com logging.googleapis.com --project={cleaned_project}"
@@ -509,7 +678,7 @@ def evaluate_customer_onboarding_readiness(
         },
         {
             "step": 5,
-            "phase": f"ODB Network & Subnet Design ({net_topo})",
+            "phase": f"ODB Network & Subnet Design ({net_topo} — Network Team Layer)",
             "actions": [
                 (
                     "In your Shared VPC Host Project, ensure the Service Project has `roles/compute.networkUser` and reference `projects/<HOST_PROJECT>/global/networks/<VPC_NAME>`."
@@ -521,6 +690,7 @@ def evaluate_customer_onboarding_readiness(
                     if needs_backup_subnet
                     else "Allocate ONE non-overlapping ODB subnet: `CLIENT_SUBNET` (e.g. `10.20.1.0/24`)."
                 ),
+                "If operating with Separation of Duties, the Network Team runs `generate_golden_terraform` with `deployment_layer='network_only'` and hands off `odb_network_name` and `client_odb_subnet_name` to the Database/Infra team.",
             ],
         },
     ]
@@ -544,9 +714,9 @@ def evaluate_customer_onboarding_readiness(
     steps.append(
         {
             "step": len(steps) + 1,
-            "phase": f"Day-1 Terraform Generation & Monitoring ({workload})",
+            "phase": f"Day-1 Terraform Generation & Monitoring ({workload} — Layer: {active_sod_plan.get('recommended_terraform_layer', 'full_stack')})",
             "actions": [
-                f"Generate the verified `hashicorp/google >= 7.0.0` Terraform bundle using `generate_golden_odb_terraform` for workload `{workload}`.",
+                f"Generate the verified `hashicorp/google >= 7.0.0` Terraform bundle using `generate_golden_odb_terraform` for workload `{workload}` (with `deployment_layer='{active_sod_plan.get('recommended_terraform_layer', 'full_stack')}'`).",
                 "Verify Cloud Monitoring metrics (`oracledatabase.googleapis.com/*`) and enable Oracle Operations Insights / diagnostic collection.",
             ],
         }
@@ -560,6 +730,8 @@ def evaluate_customer_onboarding_readiness(
             "networking_topology": net_topo,
             "workload_type": workload,
             "encryption_mode": enc_mode,
+            "team_role": role_scope,
+            "separation_of_duties_plan": active_sod_plan,
             "readiness_score_pct": readiness_score_pct,
             "blocking_items": blocking_items,
             "onboarding_checklist": steps,
