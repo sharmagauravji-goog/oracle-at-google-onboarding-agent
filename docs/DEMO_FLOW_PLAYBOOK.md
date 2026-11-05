@@ -2,7 +2,7 @@
 
 **Target Audience:** Google Cloud & Oracle Internal Field Teams (CEs, Cloud Architects, FSRs) and Enterprise Customers  
 **Deployment Environment:** Google Antigravity IDE + `oracle-google-onboarding-agent` MCP Server (`stdio`)  
-**Repository:** [`sharmagauravji-goog/oracle-at-google-onboarding-agent`](https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent)
+**Agent Package:** `oracle-at-google-onboarding-agent` (`odb-mcp-server` / `odb-onboarding-agent`)
 
 ---
 
@@ -34,7 +34,7 @@ When integrated into **Google Antigravity IDE** via the built-in **Model Context
      - `analyze_day2_terraform_diff`
      - `list_odb_provider_resources`
 2. **Optional Demo Simulation Setup (To Trigger Step 3 "Missing ODB Permission" Live):**
-   - If using a live demo project (e.g., `my-odb-demo-proj`), ensure your demo user temporarily lacks `roles/oracledatabase.admin` (or pass a test principal email to `verify_live_onboarding_and_iam_readiness`) so the agent catches the missing IAM role live on screen and gives you the exact `gcloud` fix command.
+   - Replace the generic placeholder `my-odb-demo-project` in the prompts below with your target Google Cloud project ID. Ensure your demo user temporarily lacks `roles/oracledatabase.admin` (or pass a test principal email such as `devops-lead@example.com` to `verify_live_onboarding_and_iam_readiness`) so the agent catches the missing IAM role live on screen and gives you the exact `gcloud` fix command.
 
 ---
 
@@ -86,19 +86,19 @@ What are the complete end-to-end steps required to onboard and deploy Oracle Dat
 
 **Prompt to Type in Antigravity Chat:**
 ```text
-Can you check the Marketplace Private Offer step for project ad-auth-project? How do we verify if our Private Offer and OCI Account Linking are completed, and what is our onboarding readiness score if Private Offer is done but OCI Account Linking is still pending?
+Can you check the Marketplace Private Offer step for project my-odb-demo-project? How do we verify if our Private Offer and OCI Account Linking are completed, and what is our onboarding readiness score if Private Offer is done but OCI Account Linking is still pending?
 ```
 
 **What Antigravity Does Behind the Scenes:**
 1. Calls MCP tool `get_odb_onboarding_guide(topic="marketplace_procurement")`.
-2. Calls MCP tool `evaluate_onboarding_readiness(project_id="ad-auth-project", procurement_model="private_offer", workload_type="adb")`.
-3. Calls MCP tool `verify_live_onboarding_and_iam_readiness(project_id="ad-auth-project", workload_type="adb")`.
+2. Calls MCP tool `evaluate_onboarding_readiness(project_id="my-odb-demo-project", procurement_model="private_offer", workload_type="adb")`.
+3. Calls MCP tool `verify_live_onboarding_and_iam_readiness(project_id="my-odb-demo-project", workload_type="adb")`.
 
 **What the Agent Returns on Screen:**
 - Explains that accepting the **Private Offer** in **Google Cloud Console → Marketplace → Orders** generates an active `entitlement_id` billed 100% through the Google Cloud invoice (with zero separate OCI invoice).
-- Provides the direct Console verification links for project `ad-auth-project`:
-  - Marketplace Orders: `https://console.cloud.google.com/marketplace/orders?project=ad-auth-project`
-  - ODB Account Setup: `https://console.cloud.google.com/oracledatabase/locations?project=ad-auth-project`
+- Provides the direct Console verification links for project `my-odb-demo-project`:
+  - Marketplace Orders: `https://console.cloud.google.com/marketplace/orders?project=my-odb-demo-project`
+  - ODB Account Setup: `https://console.cloud.google.com/oracledatabase/locations?project=my-odb-demo-project`
 - Shows the **Onboarding Readiness Checklist & Score** highlighting what is completed vs. what must be completed before database provisioning.
 
 ---
@@ -110,12 +110,12 @@ Can you check the Marketplace Private Offer step for project ad-auth-project? Ho
 
 **Prompt to Type in Antigravity Chat:**
 ```text
-Before we deploy Oracle Autonomous Database (adb) in project ad-auth-project, can you check our live project readiness to see if any required APIs or ODB IAM permissions are missing for principal devops-lead@example.com?
+Before we deploy Oracle Autonomous Database (adb) in project my-odb-demo-project, can you check our live project readiness to see if any required APIs or ODB IAM permissions are missing for principal devops-lead@example.com?
 ```
 *(Tip: You can omit `for principal devops-lead@example.com` to inspect your own active `gcloud` identity, or specify any user/service-account email that lacks `roles/oracledatabase.admin` to guarantee the missing-permission alert triggers during the demo!)*
 
 **What Antigravity Does Behind the Scenes:**
-- Calls MCP tool `verify_live_onboarding_and_iam_readiness(project_id="ad-auth-project", workload_type="adb", principal_email="devops-lead@example.com")`.
+- Calls MCP tool `verify_live_onboarding_and_iam_readiness(project_id="my-odb-demo-project", workload_type="adb", principal_email="devops-lead@example.com")`.
 
 **What the Agent Returns on Screen (The "Aha!" Moment):**
 - **Blocker Detected — Missing ODB IAM Roles & APIs:**
@@ -126,14 +126,14 @@ Before we deploy Oracle Autonomous Database (adb) in project ad-auth-project, ca
 - **Exact Copy-Pasteable Remediation Commands:**
   ```bash
   # 1. Enable required Oracle Database@Google Cloud APIs
-  gcloud services enable oracledatabase.googleapis.com compute.googleapis.com servicenetworking.googleapis.com --project=ad-auth-project
+  gcloud services enable oracledatabase.googleapis.com compute.googleapis.com servicenetworking.googleapis.com --project=my-odb-demo-project
 
   # 2. Grant missing ODB & Network IAM permissions
-  gcloud projects add-iam-policy-binding ad-auth-project \
+  gcloud projects add-iam-policy-binding my-odb-demo-project \
     --member='user:devops-lead@example.com' \
     --role='roles/oracledatabase.admin'
 
-  gcloud projects add-iam-policy-binding ad-auth-project \
+  gcloud projects add-iam-policy-binding my-odb-demo-project \
     --member='user:devops-lead@example.com' \
     --role='roles/compute.networkAdmin'
   ```
@@ -152,7 +152,7 @@ We fixed the IAM permissions. Now we want to connect our on-premises network and
 
 **What Antigravity Does Behind the Scenes:**
 1. Calls MCP tool `get_odb_onboarding_guide(topic="odb_networks_and_topologies")`.
-2. Calls MCP tool `generate_odb_diagram(diagram_type="networking_hub_and_spoke_ha_dr", project_id="ad-auth-project", region="us-east4", gcp_oracle_zone="us-east4-b-r1", save_to_workspace=True, output_dir="./output/diagrams")`.
+2. Calls MCP tool `generate_odb_diagram(diagram_type="networking_hub_and_spoke_ha_dr", project_id="my-odb-demo-project", region="us-east4", gcp_oracle_zone="us-east4-b-r1", save_to_workspace=True, output_dir="./output/diagrams")`.
 
 **What the Agent Returns on Screen:**
 - **Anti-Hallucination Grounded Explanation of NCC + ODB Network:**
@@ -172,14 +172,14 @@ We fixed the IAM permissions. Now we want to connect our on-premises network and
 
 **Prompt to Type in Antigravity Chat:**
 ```text
-Generate a production Golden Terraform bundle in ./output/odb-adb-demo for project ad-auth-project in region us-east4 (zone us-east4-b-r1) to deploy our ODB Network, Client Subnet (10.20.1.0/24), and an Oracle Autonomous Database 23ai (adb) named ODBDEMO1 with 4 ECPUs and 1 TB storage.
+Generate a production Golden Terraform bundle in ./output/odb-adb-demo for project my-odb-demo-project in region us-east4 (zone us-east4-b-r1) to deploy our ODB Network, Client Subnet (10.20.1.0/24), and an Oracle Autonomous Database 23ai (adb) named ODBDEMO1 with 4 ECPUs and 1 TB storage.
 ```
 
 **What Antigravity Does Behind the Scenes:**
 - Calls MCP tool `generate_golden_terraform`:
   ```json
   {
-    "project_id": "ad-auth-project",
+    "project_id": "my-odb-demo-project",
     "workload_type": "adb",
     "region": "us-east4",
     "gcp_oracle_zone": "us-east4-b-r1",
@@ -319,13 +319,13 @@ Below are **4 additional modular flows** (5–8 minutes each) that you can run s
    - **MCP Tool Triggered:** `get_odb_onboarding_guide(topic="separation_of_duties")`
    - **Result:** Displays the 4-team enterprise matrix (`procurement`, `network`, `infrastructure`, `database`) showing least-privilege IAM roles, owned Terraform resources, and handoff outputs (`odb_network_name`, `client_odb_subnet_name`, `backup_odb_subnet_name`, `exadata_infrastructure_name`).
 2. **Step 2 — Scoped Least-Privilege IAM Verification for the DBA Team (`team_role="database"`):**
-   - **Customer Prompt:** *"Check live IAM readiness in project `ad-auth-project` specifically for our Database Team (`team_role='database'`) deploying an Autonomous Database (`adb`) for principal `dba-team@example.com`."*
-   - **MCP Tool Triggered:** `verify_live_onboarding_and_iam_readiness(project_id="ad-auth-project", workload_type="adb", team_role="database", principal_email="dba-team@example.com")`
+   - **Customer Prompt:** *"Check live IAM readiness in project `my-odb-demo-project` specifically for our Database Team (`team_role='database'`) deploying an Autonomous Database (`adb`) for principal `dba-team@example.com`."*
+   - **MCP Tool Triggered:** `verify_live_onboarding_and_iam_readiness(project_id="my-odb-demo-project", workload_type="adb", team_role="database", principal_email="dba-team@example.com")`
    - **Result:** Verifies only `roles/oracledatabase.autonomousDatabaseAdmin` and `roles/oracledatabase.viewer` (without falsely requiring the DBA team to hold `roles/compute.networkAdmin` or `roles/oracledatabase.networkAdmin`).
 3. **Step 3 — Layered Terraform Generation (`network_only` → `infra_only` → `database_only`):**
    - **Customer Prompt:**
      ```text
-     Generate three separate Separation-of-Duties Terraform bundles for Exadata Dedicated in project ad-auth-project:
+     Generate three separate Separation-of-Duties Terraform bundles for Exadata Dedicated in project my-odb-demo-project:
      1. Network Team bundle (deployment_layer="network_only") in ./output/sod-1-network
      2. Infrastructure Team bundle (deployment_layer="infra_only") in ./output/sod-2-infra
      3. Database Team bundle (deployment_layer="database_only") in ./output/sod-3-database referencing the Network and Infrastructure team handoff outputs.

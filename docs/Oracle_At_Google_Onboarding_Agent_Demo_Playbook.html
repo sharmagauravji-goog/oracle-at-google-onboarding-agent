@@ -16,7 +16,7 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <h1>Oracle@Google Onboarding Agent — Live Demo Flow Playbook (Antigravity IDE Edition)</h1>
 <p><b>Target Audience:</b> Google Cloud &amp; Oracle Internal Field Teams (CEs, Cloud Architects, FSRs) and Enterprise Customers</p>
 <p><b>Deployment Environment:</b> Google Antigravity IDE + <code>oracle-google-onboarding-agent</code> MCP Server (<code>stdio</code>)</p>
-<p><b>Repository:</b> <a href='https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent'><code>sharmagauravji-goog/oracle-at-google-onboarding-agent</code></a></p>
+<p><b>Agent Package:</b> <code>oracle-at-google-onboarding-agent</code> (<code>odb-mcp-server</code> / <code>odb-onboarding-agent</code>)</p>
 <hr/>
 <h2>Executive Summary &amp; Demo Value Proposition</h2>
 <p>Enterprise customers adopting <b>Oracle Database@Google Cloud (<code>oracledatabase.googleapis.com</code>)</b> face a multi-phase journey spanning Google Cloud IAM &amp; APIs, Google Cloud Marketplace procurement (Private Offer vs. Pay-As-You-Go), OCI Tenancy Linking, My Oracle Support (MOS) CSI registration, ODB Network &amp; NCC topology design, and <code>hashicorp/google &gt;= 7.0.0</code> Terraform provisioning.</p>
@@ -41,7 +41,7 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <p style='margin: 4px 0 4px 18px;'>• <code>analyze_day2_terraform_diff</code></p>
 <p style='margin: 4px 0 4px 18px;'>• <code>list_odb_provider_resources</code></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Optional Demo Simulation Setup (To Trigger Step 3 &quot;Missing ODB Permission&quot; Live):</b></p>
-<p style='margin: 4px 0 4px 18px;'>• If using a live demo project (e.g., <code>my-odb-demo-proj</code>), ensure your demo user temporarily lacks <code>roles/oracledatabase.admin</code> (or pass a test principal email to <code>verify_live_onboarding_and_iam_readiness</code>) so the agent catches the missing IAM role live on screen and gives you the exact <code>gcloud</code> fix command.</p>
+<p style='margin: 4px 0 4px 18px;'>• Replace the generic placeholder <code>my-odb-demo-project</code> in the prompts below with your target Google Cloud project ID. Ensure your demo user temporarily lacks <code>roles/oracledatabase.admin</code> (or pass a test principal email such as <code>devops-lead@example.com</code> to <code>verify_live_onboarding_and_iam_readiness</code>) so the agent catches the missing IAM role live on screen and gives you the exact <code>gcloud</code> fix command.</p>
 <hr/>
 <h2>Demo Flow 1 (Flagship End-to-End Flow — 12 Mins): From Zero to Deployed ODB Network &amp; Autonomous Database in Antigravity</h2>
 <blockquote><b>Storyline:</b> An enterprise Cloud Architect opens Antigravity IDE to onboard their organization onto <b>Oracle Database@Google Cloud</b> and deploy an <b>Oracle Autonomous Database 23ai (<code>adb</code>)</b> with <b>Network Connectivity Center (NCC)</b> hybrid connectivity.</blockquote>
@@ -78,26 +78,26 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <p><b>Presenter Talk Track:</b></p>
 <p><i>&quot;Next, the customer knows their procurement team was working on a Google Cloud Marketplace Private Offer, and they want to check how Private Offer activation works and whether that step is complete for their project.&quot;</i></p>
 <p><b>Prompt to Type in Antigravity Chat:</b></p>
-<pre>Can you check the Marketplace Private Offer step for project ad-auth-project? How do we verify if our Private Offer and OCI Account Linking are completed, and what is our onboarding readiness score if Private Offer is done but OCI Account Linking is still pending?</pre>
+<pre>Can you check the Marketplace Private Offer step for project my-odb-demo-project? How do we verify if our Private Offer and OCI Account Linking are completed, and what is our onboarding readiness score if Private Offer is done but OCI Account Linking is still pending?</pre>
 <p><b>What Antigravity Does Behind the Scenes:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>get_odb_onboarding_guide(topic=&quot;marketplace_procurement&quot;)</code>.</p>
-<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>evaluate_onboarding_readiness(project_id=&quot;ad-auth-project&quot;, procurement_model=&quot;private_offer&quot;, workload_type=&quot;adb&quot;)</code>.</p>
-<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;ad-auth-project&quot;, workload_type=&quot;adb&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>evaluate_onboarding_readiness(project_id=&quot;my-odb-demo-project&quot;, procurement_model=&quot;private_offer&quot;, workload_type=&quot;adb&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;my-odb-demo-project&quot;, workload_type=&quot;adb&quot;)</code>.</p>
 <p><b>What the Agent Returns on Screen:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• Explains that accepting the <b>Private Offer</b> in <b>Google Cloud Console → Marketplace → Orders</b> generates an active <code>entitlement_id</code> billed 100% through the Google Cloud invoice (with zero separate OCI invoice).</p>
-<p style='margin: 4px 0 4px 18px;'>• Provides the direct Console verification links for project <code>ad-auth-project</code>:</p>
-<p style='margin: 4px 0 4px 18px;'>• Marketplace Orders: <code>https://console.cloud.google.com/marketplace/orders?project=ad-auth-project</code></p>
-<p style='margin: 4px 0 4px 18px;'>• ODB Account Setup: <code>https://console.cloud.google.com/oracledatabase/locations?project=ad-auth-project</code></p>
+<p style='margin: 4px 0 4px 18px;'>• Provides the direct Console verification links for project <code>my-odb-demo-project</code>:</p>
+<p style='margin: 4px 0 4px 18px;'>• Marketplace Orders: <code>https://console.cloud.google.com/marketplace/orders?project=my-odb-demo-project</code></p>
+<p style='margin: 4px 0 4px 18px;'>• ODB Account Setup: <code>https://console.cloud.google.com/oracledatabase/locations?project=my-odb-demo-project</code></p>
 <p style='margin: 4px 0 4px 18px;'>• Shows the <b>Onboarding Readiness Checklist &amp; Score</b> highlighting what is completed vs. what must be completed before database provisioning.</p>
 <hr/>
 <h3>Step 3: Customer Asks if Anything Is Missing Before Deploying Oracle Autonomous Database (ADB)</h3>
 <p><b>Presenter Talk Track:</b></p>
 <p><i>&quot;Now the customer says: &#x27;Assume our Private Offer and account linking are set—is there anything missing in our GCP project before I deploy Oracle Autonomous Database?&#x27; Watch how the agent inspects the live GCP project and catches a missing ODB IAM permission.&quot;</i></p>
 <p><b>Prompt to Type in Antigravity Chat:</b></p>
-<pre>Before we deploy Oracle Autonomous Database (adb) in project ad-auth-project, can you check our live project readiness to see if any required APIs or ODB IAM permissions are missing for principal devops-lead@example.com?</pre>
+<pre>Before we deploy Oracle Autonomous Database (adb) in project my-odb-demo-project, can you check our live project readiness to see if any required APIs or ODB IAM permissions are missing for principal devops-lead@example.com?</pre>
 <p><i>(Tip: You can omit <code>for principal devops-lead@example.com</code> to inspect your own active <code>gcloud</code> identity, or specify any user/service-account email that lacks <code>roles/oracledatabase.admin</code> to guarantee the missing-permission alert triggers during the demo!)</i></p>
 <p><b>What Antigravity Does Behind the Scenes:</b></p>
-<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;ad-auth-project&quot;, workload_type=&quot;adb&quot;, principal_email=&quot;devops-lead@example.com&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;my-odb-demo-project&quot;, workload_type=&quot;adb&quot;, principal_email=&quot;devops-lead@example.com&quot;)</code>.</p>
 <p><b>What the Agent Returns on Screen (The &quot;Aha!&quot; Moment):</b></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Blocker Detected — Missing ODB IAM Roles &amp; APIs:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Missing IAM Roles:</b></p>
@@ -106,14 +106,14 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <p style='margin: 4px 0 4px 18px;'>• <b>Missing/Checked GCP APIs:</b> Checks <code>oracledatabase.googleapis.com</code> and <code>servicenetworking.googleapis.com</code>.</p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Exact Copy-Pasteable Remediation Commands:</b></p>
 <pre>  # 1. Enable required Oracle Database@Google Cloud APIs
-  gcloud services enable oracledatabase.googleapis.com compute.googleapis.com servicenetworking.googleapis.com --project=ad-auth-project
+  gcloud services enable oracledatabase.googleapis.com compute.googleapis.com servicenetworking.googleapis.com --project=my-odb-demo-project
 
   # 2. Grant missing ODB &amp; Network IAM permissions
-  gcloud projects add-iam-policy-binding ad-auth-project \
+  gcloud projects add-iam-policy-binding my-odb-demo-project \
     --member=&#x27;user:devops-lead@example.com&#x27; \
     --role=&#x27;roles/oracledatabase.admin&#x27;
 
-  gcloud projects add-iam-policy-binding ad-auth-project \
+  gcloud projects add-iam-policy-binding my-odb-demo-project \
     --member=&#x27;user:devops-lead@example.com&#x27; \
     --role=&#x27;roles/compute.networkAdmin&#x27;</pre>
 <hr/>
@@ -124,7 +124,7 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <pre>We fixed the IAM permissions. Now we want to connect our on-premises network and multiple application VPCs to the ODB Network using Network Connectivity Center (NCC) in us-east4 (zone us-east4-b-r1). How does NCC integration work with ODB Network, and can you generate the architecture diagram and save it to ./output/diagrams?</pre>
 <p><b>What Antigravity Does Behind the Scenes:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>get_odb_onboarding_guide(topic=&quot;odb_networks_and_topologies&quot;)</code>.</p>
-<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>generate_odb_diagram(diagram_type=&quot;networking_hub_and_spoke_ha_dr&quot;, project_id=&quot;ad-auth-project&quot;, region=&quot;us-east4&quot;, gcp_oracle_zone=&quot;us-east4-b-r1&quot;, save_to_workspace=True, output_dir=&quot;./output/diagrams&quot;)</code>.</p>
+<p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>generate_odb_diagram(diagram_type=&quot;networking_hub_and_spoke_ha_dr&quot;, project_id=&quot;my-odb-demo-project&quot;, region=&quot;us-east4&quot;, gcp_oracle_zone=&quot;us-east4-b-r1&quot;, save_to_workspace=True, output_dir=&quot;./output/diagrams&quot;)</code>.</p>
 <p><b>What the Agent Returns on Screen:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Anti-Hallucination Grounded Explanation of NCC + ODB Network:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• Explains <b>Topology 3 (Hub-and-Spoke with Network Connectivity Center)</b>:</p>
@@ -138,11 +138,11 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <p><b>Presenter Talk Track:</b></p>
 <p><i>&quot;Now that the architecture is approved, the customer asks Antigravity to generate the production Terraform for the ODB Network (<code>google_oracle_database_odb_network</code>), the Client Subnet (<code>google_oracle_database_odb_subnet</code>), and the Autonomous Database (<code>google_oracle_database_autonomous_database</code>). Notice how fast this runs (<code>&lt;50ms</code>) and how it enforces our 5-layer anti-hallucination guardrails.&quot;</i></p>
 <p><b>Prompt to Type in Antigravity Chat:</b></p>
-<pre>Generate a production Golden Terraform bundle in ./output/odb-adb-demo for project ad-auth-project in region us-east4 (zone us-east4-b-r1) to deploy our ODB Network, Client Subnet (10.20.1.0/24), and an Oracle Autonomous Database 23ai (adb) named ODBDEMO1 with 4 ECPUs and 1 TB storage.</pre>
+<pre>Generate a production Golden Terraform bundle in ./output/odb-adb-demo for project my-odb-demo-project in region us-east4 (zone us-east4-b-r1) to deploy our ODB Network, Client Subnet (10.20.1.0/24), and an Oracle Autonomous Database 23ai (adb) named ODBDEMO1 with 4 ECPUs and 1 TB storage.</pre>
 <p><b>What Antigravity Does Behind the Scenes:</b></p>
 <p style='margin: 4px 0 4px 18px;'>• Calls MCP tool <code>generate_golden_terraform</code>:</p>
 <pre>  {
-    &quot;project_id&quot;: &quot;ad-auth-project&quot;,
+    &quot;project_id&quot;: &quot;my-odb-demo-project&quot;,
     &quot;workload_type&quot;: &quot;adb&quot;,
     &quot;region&quot;: &quot;us-east4&quot;,
     &quot;gcp_oracle_zone&quot;: &quot;us-east4-b-r1&quot;,
@@ -248,12 +248,12 @@ th { background-color: #e8f0fe; color: #174ea6; font-weight: bold; }
 <p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>get_odb_onboarding_guide(topic=&quot;separation_of_duties&quot;)</code></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Displays the 4-team enterprise matrix (<code>procurement</code>, <code>network</code>, <code>infrastructure</code>, <code>database</code>) showing least-privilege IAM roles, owned Terraform resources, and handoff outputs (<code>odb_network_name</code>, <code>client_odb_subnet_name</code>, <code>backup_odb_subnet_name</code>, <code>exadata_infrastructure_name</code>).</p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Step 2 — Scoped Least-Privilege IAM Verification for the DBA Team (<code>team_role=&quot;database&quot;</code>):</b></p>
-<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;Check live IAM readiness in project <code>ad-auth-project</code> specifically for our Database Team (<code>team_role=&#x27;database&#x27;</code>) deploying an Autonomous Database (<code>adb</code>) for principal <code>dba-team@example.com</code>.&quot;</i></p>
-<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;ad-auth-project&quot;, workload_type=&quot;adb&quot;, team_role=&quot;database&quot;, principal_email=&quot;dba-team@example.com&quot;)</code></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b> <i>&quot;Check live IAM readiness in project <code>my-odb-demo-project</code> specifically for our Database Team (<code>team_role=&#x27;database&#x27;</code>) deploying an Autonomous Database (<code>adb</code>) for principal <code>dba-team@example.com</code>.&quot;</i></p>
+<p style='margin: 4px 0 4px 18px;'>• <b>MCP Tool Triggered:</b> <code>verify_live_onboarding_and_iam_readiness(project_id=&quot;my-odb-demo-project&quot;, workload_type=&quot;adb&quot;, team_role=&quot;database&quot;, principal_email=&quot;dba-team@example.com&quot;)</code></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Result:</b> Verifies only <code>roles/oracledatabase.autonomousDatabaseAdmin</code> and <code>roles/oracledatabase.viewer</code> (without falsely requiring the DBA team to hold <code>roles/compute.networkAdmin</code> or <code>roles/oracledatabase.networkAdmin</code>).</p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Step 3 — Layered Terraform Generation (<code>network_only</code> → <code>infra_only</code> → <code>database_only</code>):</b></p>
 <p style='margin: 4px 0 4px 18px;'>• <b>Customer Prompt:</b></p>
-<pre>     Generate three separate Separation-of-Duties Terraform bundles for Exadata Dedicated in project ad-auth-project:
+<pre>     Generate three separate Separation-of-Duties Terraform bundles for Exadata Dedicated in project my-odb-demo-project:
      1. Network Team bundle (deployment_layer=&quot;network_only&quot;) in ./output/sod-1-network
      2. Infrastructure Team bundle (deployment_layer=&quot;infra_only&quot;) in ./output/sod-2-infra
      3. Database Team bundle (deployment_layer=&quot;database_only&quot;) in ./output/sod-3-database referencing the Network and Infrastructure team handoff outputs.</pre>

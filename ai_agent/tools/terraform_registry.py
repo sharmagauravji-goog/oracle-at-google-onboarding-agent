@@ -389,8 +389,8 @@ def _find_terraform_binary() -> str | None:
         return path_bin
 
     for candidate in (
-        Path("/Users/gauravshrm/.jetski/jetski/bin/terraform"),
-        Path("/Users/gauravshrm/.gemini/jetski/scratch/terraform"),
+        Path.home() / ".jetski" / "jetski" / "bin" / "terraform",
+        Path.home() / ".gemini" / "jetski" / "scratch" / "terraform",
     ):
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
