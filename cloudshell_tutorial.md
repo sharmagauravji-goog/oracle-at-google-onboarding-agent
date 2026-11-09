@@ -39,14 +39,25 @@ odb-onboarding-agent onboarding-guide --topic encryption_and_cmek
 
 ---
 
-## Step 4: Generate Grounded Mermaid & ASCII Architecture Diagrams
+## Step 4: Generate Interactive HTML5, Mermaid & ASCII Architecture Diagrams
 
-Generate syntax-verified Mermaid (`mermaid`) and ASCII diagrams for the end-to-end onboarding flow and enterprise networking topologies:
+Generate syntax-verified Mermaid (`mermaid`), terminal ASCII, and standalone interactive HTML5 topology explorers:
 
 ```bash
 odb-onboarding-agent diagram --type end_to_end_onboarding --save-to ./output/diagrams/onboarding.md
-odb-onboarding-agent diagram --type odb_network_hub_spoke_ncc --save-to ./output/diagrams/hub-spoke.md
+odb-onboarding-agent diagram --type networking_hub_and_spoke_ha_dr --format interactive_html --save-to ./output/diagrams/hub-spoke.html
+
+# Optional: Download the standalone interactive HTML5 topology explorer to your browser
+cloudshell download ./output/diagrams/hub-spoke.html
 ```
+
+To launch the full **Interactive Topology, Live Digital Twin & Blueprint-to-Terraform Studio** in **Cloud Shell Web Preview** (port `8080`):
+
+```bash
+odb-onboarding-agent studio --cloud-shell
+```
+
+Then click **Web Preview -> Preview on port 8080** in the Cloud Shell toolbar (press `Ctrl+C` when ready to continue to Step 5).
 
 ---
 

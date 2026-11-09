@@ -10,12 +10,17 @@ Commands:
 - `odb-onboarding-agent mcp-serve`: Launches the Model Context Protocol (`stdio`) server for VS Code, Cursor, Claude Desktop, and Antigravity IDE.
 - `odb-onboarding-agent ask "..."`: Runs a single-turn agentic query with live tool execution trace & auto-repair guardrails.
 - `odb-onboarding-agent chat`: Launches an interactive multi-turn agentic onboarding & architecture chat session in the terminal.
+- `odb-onboarding-agent studio`: Launches the Interactive Topology & Digital Twin Streamlit Web Studio (`127.0.0.1:8502` locally, or `127.0.0.1:8080` with Cloud Shell Web Preview proxy flags).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import subprocess
+import sys
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -232,20 +237,26 @@ def diagram(
         "both",
         "--format",
         "-f",
-        help="Format: 'mermaid', 'ascii', or 'both'.",
+        help="Format: 'mermaid', 'ascii', 'both', 'interactive_html', or 'all'.",
     ),
     save_to: Optional[str] = typer.Option(
         None,
         "--save-to",
-        help="Optional relative path inside the workspace (e.g., ./output/diagrams/onboarding.md) to save the diagram.",
+        help="Optional relative path inside the workspace (e.g., ./output/diagrams/onboarding.md or .html) to save the diagram.",
+    ),
+    save_html: bool = typer.Option(
+        False,
+        "--save-html",
+        help="Also export a standalone zero-CDN interactive HTML5 topology explorer alongside Markdown.",
     ),
 ) -> None:
-    """Generates syntax-verified Mermaid and ASCII diagrams for Oracle@Google onboarding and networking topologies."""
+    """Generates syntax-verified Mermaid, ASCII, and standalone HTML5 interactive diagrams for Oracle@Google topologies."""
     payload = json.loads(
         generate_odb_architecture_diagram(
             diagram_type=diagram_type,
             output_format=output_format,
             save_to_file=save_to or "",
+            save_interactive_html=save_html,
         )
     )
     if not payload.get("valid"):
@@ -277,6 +288,10 @@ def diagram(
         )
     if payload.get("saved_file"):
         console.print(f"[bold green]Saved diagram to:[/bold green] {payload['saved_file']}")
+    if payload.get("saved_html_file") and payload.get("saved_html_file") != payload.get("saved_file"):
+        console.print(
+            f"[bold green]Saved interactive HTML5 topology to:[/bold green] {payload['saved_html_file']}"
+        )
 
 
 @app.command("inspect-provider")
@@ -499,5 +514,63 @@ def chat(
         )
 
 
+@app.command("studio")
+def studio(
+    port: Optional[int] = typer.Option(
+        None,
+        "--port",
+        "-p",
+        help="Localhost port (defaults to 8080 in Google Cloud Shell, or 8502 locally).",
+    ),
+    cloud_shell: bool = typer.Option(
+        False,
+        "--cloud-shell",
+        help="Enable Google Cloud Shell Web Preview proxy compatibility flags on 127.0.0.1:8080.",
+    ),
+) -> None:
+    """Launches the Interactive Topology, Digital Twin & Golden Terraform Web Studio (bound strictly to 127.0.0.1)."""
+    is_cloud_shell = cloud_shell or os.environ.get("CLOUD_SHELL", "").lower() == "true"
+    effective_port = port if port is not None else (8080 if is_cloud_shell else 8502)
+    web_entry = str((Path(__file__).resolve().parent / "web.py"))
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        web_entry,
+        "--server.address=127.0.0.1",
+        f"--server.port={effective_port}",
+        "--browser.gatherUsageStats=false",
+    ]
+    if is_cloud_shell:
+        cmd.extend(
+            [
+                "--server.enableCORS=false",
+                "--server.enableXsrfProtection=false",
+                "--server.headless=true",
+            ]
+        )
+        console.print(
+            Panel.fit(
+                f"[bold green]Launching Interactive Studio for Google Cloud Shell Web Preview[/bold green]\n"
+                f"Bound safely to [bold]127.0.0.1:{effective_port}[/bold].\n"
+                f"Click [bold cyan]Web Preview -> Preview on port {effective_port}[/bold cyan] in the Cloud Shell toolbar.",
+                border_style="green",
+            )
+        )
+    else:
+        console.print(
+            Panel.fit(
+                f"[bold green]Launching Interactive Studio on http://127.0.0.1:{effective_port}[/bold green]",
+                border_style="green",
+            )
+        )
+
+    proc = subprocess.run(cmd, check=False)
+    raise typer.Exit(code=proc.returncode)
+
+
 if __name__ == "__main__":
     app()
+

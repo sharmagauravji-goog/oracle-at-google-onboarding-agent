@@ -108,8 +108,8 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
     {
         "name": "generate_odb_diagram",
         "description": (
-            "Generates syntax-verified Mermaid (`mermaid`) and ASCII architecture/onboarding diagrams for "
-            "ODB@GCP (end-to-end onboarding, standalone VPC, Shared VPC, Hub-and-Spoke HA/DR, Backup & Recovery, "
+            "Generates syntax-verified Mermaid (`mermaid`), ASCII, and Interactive SVG Topology specs/HTML5 explorers "
+            "for ODB@GCP (end-to-end onboarding, standalone VPC, Shared VPC, Hub-and-Spoke HA/DR, Backup & Recovery, "
             "CMEK Encryption, or Monitoring)."
         ),
         "inputSchema": {
@@ -130,7 +130,17 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
                 "vpc_cidr": {"type": "string", "default": "10.10.0.0/16"},
                 "client_subnet_cidr": {"type": "string", "default": "10.20.1.0/24"},
                 "backup_subnet_cidr": {"type": "string", "default": "10.20.2.0/24"},
+                "output_format": {
+                    "type": "string",
+                    "description": "Format: 'mermaid', 'ascii', 'both' (default), 'interactive_html', or 'all'.",
+                    "default": "both",
+                },
                 "save_to_workspace": {"type": "boolean", "default": False},
+                "save_interactive_html": {
+                    "type": "boolean",
+                    "description": "When save_to_workspace is true, also writes <diagram_type>.html standalone interactive HTML5 explorer.",
+                    "default": False,
+                },
                 "output_dir": {"type": "string", "default": "./output/diagrams"},
             },
         },
@@ -386,7 +396,9 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
                 vpc_cidr=str(args.get("vpc_cidr", "10.10.0.0/16")),
                 client_subnet_cidr=str(args.get("client_subnet_cidr", "10.20.1.0/24")),
                 backup_subnet_cidr=str(args.get("backup_subnet_cidr", "10.20.2.0/24")),
+                output_format=str(args.get("output_format", "both")),
                 save_to_workspace=bool(args.get("save_to_workspace", False)),
+                save_interactive_html=bool(args.get("save_interactive_html", False)),
                 output_dir=str(args.get("output_dir", "./output/diagrams")),
             )
             parsed = json.loads(res_str)

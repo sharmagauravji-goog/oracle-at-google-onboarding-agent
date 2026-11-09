@@ -35,15 +35,19 @@ An LLM-powered **Oracle@Google Onboarding Agent** built on the official [`google
 - **Monitoring & Observability (`monitoring_and_observability`)**:
   - Native **Google Cloud Monitoring** (`oracledatabase.googleapis.com/*` metrics for CPU, storage, IOPS, sessions), **Cloud Logging** (`cloudaudit.googleapis.com/activity`), and **Oracle Operations Insights / Database Management / AWR**.
 
-### 3. Grounded Architecture & Onboarding Diagram Generator
-Generates syntax-verified **Mermaid (`mermaid`)** and **ASCII** diagrams via CLI, Web Studio, Chat, or IDE MCP Server:
-- `end_to_end_onboarding`: Complete 6-stage onboarding journey (Prerequisites -> Marketplace Private Offer/PAYG -> OCI Linking -> MOS/CSI Support -> ODB Network -> Terraform Provisioning).
-- `odb_network_standalone`: Single-Project VPC connected to `google_oracle_database_odb_network` (`CLIENT_SUBNET` + `BACKUP_SUBNET`).
-- `odb_network_shared_vpc`: Enterprise Shared VPC Host Project + App Service Projects connected to ODB Network.
-- `odb_network_hub_spoke_ncc`: Hybrid On-Premises + Cloud Interconnect/HA VPN + NCC Transit Hub + Private DNS (`*.oraclevcn.com`) + ODB Network.
-- `backup_and_dr_architecture`: RMAN over `BACKUP_SUBNET`, Autonomous Backups, PITR, and Cross-Zone/Region Data Guard.
-- `cmek_encryption_flow`: Google Cloud KMS CMEK key hierarchy, `gcp-sa-oracledatabase` IAM binding, and Oracle TDE wallet encryption.
-- `monitoring_and_observability_flow`: Dual-plane telemetry across Cloud Monitoring, Cloud Audit Logs, and Oracle AWR/Operations Insights.
+### 3. Interactive Topology Explorer, Live "Digital Twin" Overlays & Diagram Generator
+Generates **Interactive HTML5 / Streamlit CCv2 SVG Topologies**, syntax-verified **Mermaid (`mermaid`)**, and **ASCII** diagrams via CLI, Web Studio, Chat, or IDE MCP Server:
+- **Interactive SVG Topology Explorer**: Pan/zoom canvas, live node search, **Click-to-Inspect Resource Drawer** (exact `hashicorp/google` HCL, least-privilege IAM roles, usable `/28` CIDR IP capacity math), and layer toggles (**Separation-of-Duties Team Ownership** color-coding, **CMEK Layer**, **Data Guard DR Layer**, and **Animated DNS/SQL\*Net/RMAN Packet Flows**).
+- **Live "Digital Twin" Readiness & Day-2 Blast-Radius Overlays**: Dynamically badges diagram nodes as `LIVE VERIFIED` (Green), `WARNING` (Amber), or `BLOCKER` (Red) from live GCP API/IAM/VPC subnet probes (with 1-click copyable `gcloud` remediation commands), or overlays `~ SAFE ONLINE` vs. pulsing `-/+ FORCENEW RISK` badges from Day-2 Terraform diffs.
+- **Bidirectional "Visual Blueprint-to-Terraform" Canvas**: Edit `project_id`, `region`, `gcp_oracle_zone`, `vpc_cidr`, `client_subnet_cidr`, `backup_subnet_cidr`, `workload_type`, `deployment_layer`, `compute_count`, and `storage_size_tb` inside the diagram with real-time `/28` + RFC1918 overlap validation and 1-click **Sync Blueprint & Generate Golden Terraform** into `./output/`.
+- **7 Supported Topologies**:
+  - `end_to_end_onboarding`: Complete 6-stage onboarding journey (Prerequisites -> Marketplace Private Offer/PAYG -> OCI Linking -> MOS/CSI Support -> ODB Network -> Terraform Provisioning).
+  - `networking_standalone_vpc`: Single-Project VPC connected to `google_oracle_database_odb_network` (`CLIENT_SUBNET` + `BACKUP_SUBNET`).
+  - `networking_shared_vpc`: Enterprise Shared VPC Host Project + App Service Projects connected to ODB Network.
+  - `networking_hub_and_spoke_ha_dr`: Hybrid On-Premises + Cloud Interconnect/HA VPN + NCC Transit Hub + Private DNS (`*.oraclevcn.com`) + ODB Network + Data Guard DR.
+  - `backup_and_recovery`: RMAN over `BACKUP_SUBNET`, Autonomous Backups, PITR, and Cross-Zone/Region Data Guard.
+  - `encryption_cmek`: Google Cloud KMS CMEK key hierarchy, `gcp-sa-oracledatabase` IAM binding, and Oracle TDE wallet encryption.
+  - `monitoring_observability`: Dual-plane telemetry across Cloud Monitoring, Cloud Audit Logs, and Oracle AWR/Operations Insights.
 
 ### 4. Production Terraform Generation (Monolithic & Layered Separation of Duties) + 5-Layer Anti-Hallucination Guardrails
 - **Golden Baseline Templates (`generate_golden_odb_terraform`)** for Autonomous Database 23ai (`adb`), Exadata Dedicated (`exadata_dedicated`), Exascale (`exascale`), and BaseDB (`basedb`), supporting both:
@@ -67,21 +71,61 @@ Exposes the agent's tools over JSON-RPC 2.0 `stdio` (`odb-mcp-server` or `odb-on
 
 ## Option 1: One-Click Google Cloud Shell (Recommended — Zero Setup)
 
-Click the button above or open directly in Google Cloud Shell:
+Google Cloud Shell comes pre-authenticated with `gcloud`, `$GOOGLE_CLOUD_PROJECT`, Vertex AI ADC, and `terraform`—so the Interactive Topology Studio, Live Digital Twin GCP Readiness Overlays, and 1-click Blueprint-to-Terraform sync work immediately with zero API keys.
+
+Click **Open in Cloud Shell** above or run:
 
 ```bash
 git clone https://github.com/sharmagauravji-goog/oracle-at-google-onboarding-agent.git
 cd oracle-at-google-onboarding-agent
 ./scripts/cloudshell_quickstart.sh
+source .venv/bin/activate
 ```
 
-Or run the CLI commands directly:
+### How Interactive Tools Work in Google Cloud Shell (3 Modes)
+
+#### Mode A: Full Interactive Topology & Digital Twin Studio via Cloud Shell "Web Preview" *(Recommended)*
+Launch the Web Studio (auto-detects `CLOUD_SHELL=true`, binds safely to `127.0.0.1:8080`, and applies Cloud Shell's authenticated `*.cloudshell.dev` reverse-proxy flags so WebSockets and Custom Components v2 stream cleanly):
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt && pip install -e .
+odb-onboarding-agent studio --cloud-shell
+```
 
+*(Equivalent manual Streamlit command in Cloud Shell:)*
+```bash
+streamlit run ai_agent/web.py \
+  --server.address=127.0.0.1 \
+  --server.port=8080 \
+  --server.enableCORS=false \
+  --server.enableXsrfProtection=false \
+  --browser.gatherUsageStats=false
+```
+
+Then click **Web Preview** (top-right of Cloud Shell) → **Preview on port 8080** to:
+- Pan/zoom topologies, inspect exact `hashicorp/google` HCL & IAM per node, and toggle CMEK / DR / Animated Packet Flows.
+- Click **Probe Live GCP Readiness** to overlay live API, IAM, and VPC subnet collision checks from your active Cloud Shell project.
+- Edit CIDRs/ECPUs in the **Blueprint Editor** and click **Sync Blueprint & Generate Golden Terraform** to write validated `.tf` files directly to `./output/` in Cloud Shell.
+
+#### Mode B: Standalone Zero-CDN Interactive HTML5 Diagram (`cloudshell download` or Static Preview)
+Export any topology as a self-contained `.html` file (with pan/zoom, HCL/IAM inspector, layer toggles, and live `/28` CIDR validation):
+
+```bash
+odb-onboarding-agent diagram \
+  --type end_to_end_onboarding \
+  --format interactive_html \
+  --save-to ./output/diagrams/onboarding.html
+
+# Download to your laptop browser in one command:
+cloudshell download ./output/diagrams/onboarding.html
+
+# Or serve inside Cloud Shell Web Preview on port 8080:
+python3 -m http.server 8080 --bind 127.0.0.1 --directory ./output/diagrams
+```
+
+#### Mode C: Pure Cloud Shell Terminal CLI (Rich ASCII Diagrams & Multi-Turn Chat)
+If staying strictly inside the Cloud Shell `bash` terminal without opening Web Preview:
+
+```bash
 # 1. Verify environment & Vertex AI ADC connection
 odb-onboarding-agent doctor --ping-llm
 
@@ -90,9 +134,9 @@ odb-onboarding-agent onboarding-guide --topic overview
 odb-onboarding-agent onboarding-guide --topic marketplace_procurement
 odb-onboarding-agent onboarding-guide --topic odb_networks_and_topologies
 
-# 3. Generate Grounded Mermaid & ASCII Diagrams
+# 3. Render Rich ASCII & Mermaid Diagrams in Terminal
 odb-onboarding-agent diagram --type end_to_end_onboarding --save-to ./output/diagrams/onboarding.md
-odb-onboarding-agent diagram --type odb_network_hub_spoke_ncc --save-to ./output/diagrams/hub-spoke.md
+odb-onboarding-agent diagram --type networking_hub_and_spoke_ha_dr --save-html --save-to ./output/diagrams/hub-spoke.md
 
 # 4. Generate a Verified Day-1 Golden Terraform Bundle
 odb-onboarding-agent generate-golden --project-id "$GOOGLE_CLOUD_PROJECT" --workload adb
@@ -216,7 +260,7 @@ Create `.vscode/mcp.json` (or `.cursor/mcp.json`) in your project workspace:
 | `get_odb_onboarding_guide` | Grounded answers on Prerequisites, Marketplace (Private Offer vs PAYG), OCI Linking, MOS/CSI Support, ODB Networks, Backup, CMEK, Monitoring | Read-only knowledge base |
 | `evaluate_onboarding_readiness` | Evaluates customer onboarding readiness (0–100 score + missing checklist items & `gcloud` bootstrap commands) | Read-only evaluator |
 | `verify_live_onboarding_and_iam_readiness` | Queries live GCP project APIs (`oracledatabase.googleapis.com`), active IAM roles (`roles/oracledatabase.admin`), and Marketplace/OCI link readiness | Read-only live GCP pre-flight check |
-| `generate_odb_diagram` | Generates syntax-verified Mermaid (`mermaid`) and ASCII architecture/onboarding diagrams | Workspace path sandboxed |
+| `generate_odb_diagram` | Generates Interactive SVG Topology specs/standalone HTML5 (`save_interactive_html=true`), Mermaid (`mermaid`), and ASCII diagrams | Workspace path sandboxed + CSP nonce |
 | `generate_golden_terraform` | Generates verified Day-1 Golden Terraform (`networking.tf`, `workload.tf`, `variables.tf`, `outputs.tf`, `versions.tf`) in `./output/<bundle>` | Fast validation (`<50ms`), concise summary, workspace sandboxed |
 | `validate_odb_terraform_hcl` | Validates HCL against `EXACT_ODB_RESOURCE_SCHEMAS`, `/28` subnet rules, and secret-leak rules | Fast validation (`<50ms`), read-only |
 | `validate_odb_network_cidrs` | Validates VPC, `CLIENT_SUBNET`, and `BACKUP_SUBNET` CIDR math (`/28` minimum, non-overlapping) | Read-only |
@@ -226,10 +270,14 @@ Create `.vscode/mcp.json` (or `.cursor/mcp.json`) in your project workspace:
 
 ---
 
-## Option 3: Launch the Streamlit Web Studio
+## Option 3: Launch the Interactive Streamlit Web Studio
 
 ```bash
-streamlit run ai_agent/web.py --server.address=127.0.0.1 --server.port=8502
+# Local workstation (binds safely to http://127.0.0.1:8502)
+odb-onboarding-agent studio
+
+# Or in Google Cloud Shell Web Preview (binds to 127.0.0.1:8080 with proxy compatibility flags)
+odb-onboarding-agent studio --cloud-shell
 ```
 
 ---

@@ -17,6 +17,12 @@ import os
 import re
 from typing import Any
 
+from ai_agent.tools.interactive_diagram import (
+    build_day2_blast_radius_overlays,
+    build_interactive_diagram_spec,
+    build_readiness_node_overlays,
+    render_standalone_interactive_html,
+)
 from ai_agent.tools.network_validator import resolve_safe_workspace_path
 
 _SAFE_TOKEN_RE = re.compile(r"^[a-zA-Z0-9._\-:/]+$")
@@ -51,8 +57,17 @@ def generate_odb_architecture_diagram(
     output_dir: str = "./output/diagrams",
     output_format: str = "both",
     save_to_file: str = "",
+    workload_type: str = "adb",
+    deployment_layer: str = "full_stack",
+    compute_count: int = 4,
+    storage_size_tb: int = 1,
+    live_readiness_json: str = "",
+    checklist_readiness_json: str = "",
+    live_subnet_overlap_json: str = "",
+    day2_diff_json: str = "",
+    save_interactive_html: bool = False,
 ) -> str:
-    """Generates a grounded, syntax-verified Mermaid and ASCII diagram for ODB@GCP onboarding or architecture.
+    """Generates a grounded, syntax-verified Mermaid, ASCII, and Interactive Topology diagram for ODB@GCP.
 
     Always call this tool when the customer asks for a diagram, visual flow, networking topology illustration,
     or end-to-end onboarding flowchart.
@@ -72,13 +87,22 @@ def generate_odb_architecture_diagram(
         vpc_cidr: Customer VPC CIDR range.
         client_subnet_cidr: ODB Client Subnet CIDR range (minimum `/28`).
         backup_subnet_cidr: ODB Backup Subnet CIDR range (minimum `/28`).
-        save_to_workspace: If True, writes `<diagram_type>.md` inside `output_dir` (within the active workspace).
+        save_to_workspace: If True, writes `<diagram_type>.md` (and `<diagram_type>.html` when requested) inside `output_dir` (within the active workspace).
         output_dir: Relative directory inside the open workspace to save diagram files.
-        output_format: `'mermaid'`, `'ascii'`, or `'both'`.
-        save_to_file: Optional file path inside the workspace (e.g. `./output/diagrams/onboarding.md`) to write the diagram.
+        output_format: `'mermaid'`, `'ascii'`, `'both'`, `'interactive_html'`, or `'all'`.
+        save_to_file: Optional file path inside the workspace (e.g. `./output/diagrams/onboarding.md` or `.html`) to write the diagram.
+        workload_type: Target ODB workload (`adb`, `exadata_dedicated`, `exascale`, `basedb`).
+        deployment_layer: Separation-of-Duties Terraform layer (`full_stack`, `network_only`, `infra_only`, `database_only`).
+        compute_count: Initial ECPU / OCPU allocation for the interactive blueprint canvas.
+        storage_size_tb: Initial storage allocation in TB for the interactive blueprint canvas.
+        live_readiness_json: Optional JSON string from `verify_live_onboarding_and_iam_readiness` for live Digital Twin node badges.
+        checklist_readiness_json: Optional JSON string from `evaluate_customer_onboarding_readiness` for readiness gate badges.
+        live_subnet_overlap_json: Optional JSON string from `check_live_vpc_subnet_overlaps` for live VPC collision badges.
+        day2_diff_json: Optional JSON string from `analyze_day2_terraform_diff` for Day-2 `ForceNew` blast-radius badges.
+        save_interactive_html: If True when `save_to_workspace=True`, also exports a standalone zero-CDN HTML5 interactive topology file.
 
     Returns:
-        JSON string containing `title`, `mermaid_code`, `mermaid_markdown`, `ascii_diagram`, `key_takeaways`, and optional `saved_file`.
+        JSON string containing `title`, `mermaid_code`, `mermaid_markdown`, `ascii_diagram`, `interactive_spec`, `key_takeaways`, and optional `saved_file` / `saved_html_file`.
     """
     proj = _sanitize_label(project_id, "my-odb-project-01")
     reg = _sanitize_label(region, "us-east4")
@@ -444,7 +468,44 @@ def generate_odb_architecture_diagram(
                 break
 
     chosen = diagrams[selected_key]
+    fmt = (output_format or "both").strip().lower()
+
+    merged_node_overlays: dict[str, dict[str, str]] = {}
+    merged_node_overlays.update(
+        build_readiness_node_overlays(
+            live_readiness_json=live_readiness_json,
+            checklist_readiness_json=checklist_readiness_json,
+            live_subnet_overlap_json=live_subnet_overlap_json,
+        )
+    )
+    merged_node_overlays.update(build_day2_blast_radius_overlays(day2_diff_json))
+
+    interactive_spec = build_interactive_diagram_spec(
+        diagram_type=selected_key,
+        project_id=proj,
+        region=reg,
+        gcp_oracle_zone=ozone,
+        vpc_cidr=v_cidr,
+        client_subnet_cidr=c_cidr,
+        backup_subnet_cidr=b_cidr,
+        workload_type=workload_type,
+        deployment_layer=deployment_layer,
+        compute_count=compute_count,
+        storage_size_tb=storage_size_tb,
+        node_overlays=merged_node_overlays,
+    )
+
+    needs_html = (
+        fmt in ("interactive_html", "all")
+        or bool(save_interactive_html)
+        or (bool(save_to_file) and save_to_file.strip().lower().endswith(".html"))
+    )
+    standalone_html_doc = (
+        render_standalone_interactive_html(interactive_spec) if needs_html else ""
+    )
+
     saved_file_path: str | None = None
+    saved_html_file_path: str | None = None
     md_doc = (
         f"# {chosen['title']}\n\n"
         f"```mermaid\n{chosen['mermaid']}\n```\n\n"
@@ -457,9 +518,35 @@ def generate_odb_architecture_diagram(
     if save_to_file and save_to_file.strip():
         try:
             target_file = resolve_safe_workspace_path(save_to_file.strip())
-            target_file.parent.mkdir(parents=True, exist_ok=True)
-            target_file.write_text(md_doc, encoding="utf-8")
-            saved_file_path = str(target_file)
+            if target_file.suffix.lower() == ".html":
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                target_file.write_text(standalone_html_doc, encoding="utf-8")
+                saved_file_path = str(target_file)
+                saved_html_file_path = str(target_file)
+            elif target_file.suffix.lower() in (".md", ".txt", ".markdown"):
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                target_file.write_text(md_doc, encoding="utf-8")
+                saved_file_path = str(target_file)
+                if save_interactive_html:
+                    sibling_html = target_file.with_suffix(".html").resolve()
+                    if str(sibling_html).startswith(str(target_file.parent) + os.sep):
+                        sibling_html.write_text(standalone_html_doc, encoding="utf-8")
+                        saved_html_file_path = str(sibling_html)
+            else:
+                # Directory path provided in save_to_file
+                target_file.mkdir(parents=True, exist_ok=True)
+                if fmt != "interactive_html":
+                    md_path = (target_file / f"{selected_key}.md").resolve()
+                    if str(md_path).startswith(str(target_file) + os.sep):
+                        md_path.write_text(md_doc, encoding="utf-8")
+                        saved_file_path = str(md_path)
+                if save_interactive_html or fmt in ("interactive_html", "all"):
+                    html_path = (target_file / f"{selected_key}.html").resolve()
+                    if str(html_path).startswith(str(target_file) + os.sep):
+                        html_path.write_text(standalone_html_doc, encoding="utf-8")
+                        saved_html_file_path = str(html_path)
+                        if not saved_file_path:
+                            saved_file_path = str(html_path)
         except ValueError as exc:
             return json.dumps(
                 {
@@ -468,15 +555,23 @@ def generate_odb_architecture_diagram(
                 },
                 indent=2,
             )
-    elif save_to_workspace:
+    elif save_to_workspace or save_interactive_html:
         try:
             target_dir = resolve_safe_workspace_path(output_dir)
             target_dir.mkdir(parents=True, exist_ok=True)
-            safe_filename = f"{selected_key}.md"
-            file_path = (target_dir / safe_filename).resolve()
-            if str(file_path).startswith(str(target_dir) + os.sep):
-                file_path.write_text(md_doc, encoding="utf-8")
-                saved_file_path = str(file_path)
+            if save_to_workspace:
+                safe_filename = f"{selected_key}.md"
+                file_path = (target_dir / safe_filename).resolve()
+                if str(file_path).startswith(str(target_dir) + os.sep):
+                    file_path.write_text(md_doc, encoding="utf-8")
+                    saved_file_path = str(file_path)
+            if save_interactive_html or (save_to_workspace and fmt in ("interactive_html", "all")):
+                html_path = (target_dir / f"{selected_key}.html").resolve()
+                if str(html_path).startswith(str(target_dir) + os.sep):
+                    html_path.write_text(standalone_html_doc, encoding="utf-8")
+                    saved_html_file_path = str(html_path)
+                    if not saved_file_path:
+                        saved_file_path = str(html_path)
         except ValueError as exc:
             return json.dumps(
                 {
@@ -486,23 +581,26 @@ def generate_odb_architecture_diagram(
                 indent=2,
             )
 
-    fmt = (output_format or "both").strip().lower()
-    mermaid_md = f"```mermaid\n{chosen['mermaid']}\n```" if fmt in ("both", "mermaid") else ""
-    ascii_str = chosen["ascii"] if fmt in ("both", "ascii") else ""
+    mermaid_md = f"```mermaid\n{chosen['mermaid']}\n```" if fmt in ("both", "mermaid", "all") else ""
+    ascii_str = chosen["ascii"] if fmt in ("both", "ascii", "all") else ""
 
-    return json.dumps(
-        {
-            "valid": True,
-            "diagram_type": selected_key,
-            "available_diagram_types": list(diagrams.keys()),
-            "title": chosen["title"],
-            "summary": chosen["key_takeaways"][0] if chosen.get("key_takeaways") else chosen["title"],
-            "mermaid_code": chosen["mermaid"],
-            "mermaid_markdown": mermaid_md,
-            "ascii_diagram": ascii_str,
-            "key_takeaways": chosen["key_takeaways"],
-            "saved_file": saved_file_path,
-        },
-        indent=2,
-    )
+    response_payload: dict[str, Any] = {
+        "valid": True,
+        "diagram_type": selected_key,
+        "available_diagram_types": list(diagrams.keys()),
+        "title": chosen["title"],
+        "summary": chosen["key_takeaways"][0] if chosen.get("key_takeaways") else chosen["title"],
+        "mermaid_code": chosen["mermaid"],
+        "mermaid_markdown": mermaid_md,
+        "ascii_diagram": ascii_str,
+        "key_takeaways": chosen["key_takeaways"],
+        "interactive_spec": interactive_spec,
+        "saved_file": saved_file_path,
+        "saved_html_file": saved_html_file_path,
+    }
+    if fmt in ("interactive_html", "all"):
+        response_payload["interactive_html"] = standalone_html_doc
+
+    return json.dumps(response_payload, indent=2)
+
 
