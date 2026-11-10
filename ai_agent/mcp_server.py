@@ -320,6 +320,160 @@ MCP_TOOLS_CATALOG: list[dict[str, Any]] = [
             "required": ["project_id"],
         },
     },
+    {
+        "name": "run_odb_architecture_wizard",
+        "description": (
+            "Guided Interactive Architecture Discovery & Sizing Wizard (Part 2 Item 4). Evaluates customer workload profile "
+            "(`autonomous_ai_lakehouse`, `oltp_mission_critical`, `consolidated_erp_rac`, `elastic_rac_cloud_native`, "
+            "`single_instance_dev_test`), HA/DR tier (`regional_ha`, `multi_zone_or_cross_region_dr`, `standard_single_zone`), "
+            "CPU/storage sizing, networking governance (`standalone_vpc`, `shared_vpc`, `hub_and_spoke`), and encryption mode "
+            "to recommend the exact ODB@GCP workload, shape, interactive topology spec, and optional Golden Terraform bundle."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "default": "my-odb-project-01"},
+                "region": {"type": "string", "default": "us-east4"},
+                "gcp_oracle_zone": {"type": "string", "default": "us-east4-b-r1"},
+                "workload_profile": {
+                    "type": "string",
+                    "description": (
+                        "One of: 'autonomous_ai_lakehouse', 'oltp_mission_critical', 'consolidated_erp_rac', "
+                        "'elastic_rac_cloud_native', 'single_instance_dev_test'."
+                    ),
+                    "default": "autonomous_ai_lakehouse",
+                },
+                "ha_dr_tier": {
+                    "type": "string",
+                    "description": "'regional_ha', 'multi_zone_or_cross_region_dr', or 'standard_single_zone'.",
+                    "default": "regional_ha",
+                },
+                "cpu_cores_needed": {"type": "integer", "default": 8},
+                "storage_tb_needed": {"type": "integer", "default": 2},
+                "network_governance": {
+                    "type": "string",
+                    "description": "'standalone_vpc', 'shared_vpc', or 'hub_and_spoke'.",
+                    "default": "standalone_vpc",
+                },
+                "encryption_compliance": {
+                    "type": "string",
+                    "description": "'google_managed', 'gcp_cmek', or 'oci_vault'.",
+                    "default": "google_managed",
+                },
+                "procurement_preference": {
+                    "type": "string",
+                    "description": "'private_offer' or 'payg'.",
+                    "default": "private_offer",
+                },
+                "separation_of_duties_mode": {
+                    "type": "string",
+                    "description": "'full_stack' or 'enterprise_layered'.",
+                    "default": "full_stack",
+                },
+                "vpc_cidr": {"type": "string", "default": "10.10.0.0/16"},
+                "client_subnet_cidr": {"type": "string", "default": "10.20.1.0/24"},
+                "backup_subnet_cidr": {"type": "string", "default": "10.20.2.0/24"},
+                "generate_artifacts": {
+                    "type": "boolean",
+                    "description": "When true, writes the recommended Golden Terraform bundle into base_output_dir.",
+                    "default": False,
+                },
+                "bundle_name": {"type": "string", "default": ""},
+                "base_output_dir": {"type": "string", "default": "./output"},
+            },
+        },
+    },
+    {
+        "name": "manage_onboarding_progress_tracker",
+        "description": (
+            "Stateful 6-Phase Onboarding Progress Tracker (Part 2 Item 5). Persists and updates customer onboarding "
+            "progress across Phases 1 to 6 inside `./output/onboarding_progress.json`, supports `auto_verify` against live "
+            "GCP readiness and workspace `.tf` files, and emits Digital Twin `node_overlays` for interactive diagrams."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "One of: 'status' (default), 'update_phase', 'auto_verify', or 'reset'.",
+                    "default": "status",
+                },
+                "project_id": {"type": "string", "default": "my-odb-project-01"},
+                "region": {"type": "string", "default": "us-east4"},
+                "phase_id": {
+                    "type": "string",
+                    "description": "Phase ID for 'update_phase': 'phase_1' .. 'phase_6' (or '1' .. '6').",
+                    "default": "",
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Status for 'update_phase': 'completed', 'in_progress', 'blocked', or 'pending'.",
+                    "default": "",
+                },
+                "notes": {"type": "string", "default": ""},
+                "tracker_file": {"type": "string", "default": "./output/onboarding_progress.json"},
+            },
+        },
+    },
+    {
+        "name": "simulate_day2_scaling_what_if",
+        "description": (
+            "Interactive Day-2 What-If Scaling & ForceNew Simulator (Part 2 Item 6). Simulates online ECPU/OCPU and storage "
+            "scaling vs. immutable `ForceNew` attribute changes, computes downtime impact, generates Day-2 blast-radius "
+            "interactive topology specs, and blocks writing `.tf` files if destructive replacement hazards are detected."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workload_type": {
+                    "type": "string",
+                    "description": "'adb', 'exadata_dedicated', 'exascale', or 'basedb'.",
+                    "default": "adb",
+                },
+                "project_id": {"type": "string", "default": "my-odb-project-01"},
+                "region": {"type": "string", "default": "us-east4"},
+                "current_gcp_oracle_zone": {"type": "string", "default": "us-east4-b-r1"},
+                "proposed_gcp_oracle_zone": {"type": "string", "default": "us-east4-b-r1"},
+                "current_odb_network": {"type": "string", "default": "odb-prod-net"},
+                "proposed_odb_network": {"type": "string", "default": "odb-prod-net"},
+                "current_client_subnet_cidr": {"type": "string", "default": "10.20.1.0/24"},
+                "proposed_client_subnet_cidr": {"type": "string", "default": "10.20.1.0/24"},
+                "current_db_name": {"type": "string", "default": "ODBPROD1"},
+                "proposed_db_name": {"type": "string", "default": "ODBPROD1"},
+                "current_compute_count": {"type": "integer", "default": 4},
+                "proposed_compute_count": {"type": "integer", "default": 8},
+                "current_storage_size_tb": {"type": "integer", "default": 1},
+                "proposed_storage_size_tb": {"type": "integer", "default": 2},
+                "current_auto_scaling": {"type": "boolean", "default": True},
+                "proposed_auto_scaling": {"type": "boolean", "default": True},
+                "current_deletion_protection": {"type": "boolean", "default": True},
+                "proposed_deletion_protection": {"type": "boolean", "default": True},
+                "apply_to_bundle_dir": {
+                    "type": "string",
+                    "description": "Optional workspace-relative directory to write `day2_simulated_update.tf` if safe.",
+                    "default": "",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_guardrail_telemetry_report",
+        "description": (
+            "5-Layer Guardrail Telemetry & Compliance Scorecard (Part 2 Item 7). Audits a workspace directory, HCL snippet, "
+            "and/or onboarding response across all 5 Anti-Hallucination & Day-2 Safety Guardrail layers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace_dir": {"type": "string", "default": "./output"},
+                "hcl_content": {"type": "string", "default": ""},
+                "response_text": {"type": "string", "default": ""},
+                "vpc_cidr": {"type": "string", "default": "10.10.0.0/16"},
+                "client_subnet_cidr": {"type": "string", "default": "10.20.1.0/24"},
+                "backup_subnet_cidr": {"type": "string", "default": "10.20.2.0/24"},
+            },
+        },
+    },
 ]
 
 
@@ -335,6 +489,12 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
         )
         from ai_agent.tools.diagram_generator import generate_odb_architecture_diagram
         from ai_agent.tools.golden_templates import generate_golden_odb_terraform
+        from ai_agent.tools.interactive_workflows import (
+            audit_workspace_and_hcl_guardrails,
+            manage_onboarding_progress_tracker,
+            recommend_odb_architecture_wizard,
+            simulate_day2_scaling_what_if,
+        )
         from ai_agent.tools.network_validator import (
             resolve_safe_workspace_path,
             save_generated_terraform_bundle,
@@ -537,6 +697,100 @@ def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any
                 workload_type=str(args.get("workload_type", "adb")),
                 principal_email=str(args.get("principal_email", "")),
                 team_role=str(args.get("team_role", "full_stack")),
+            )
+            parsed = json.loads(res_str)
+            return {
+                "isError": not parsed.get("valid", True),
+                "content": [{"type": "text", "text": res_str}],
+            }
+
+        if tool_name == "run_odb_architecture_wizard":
+            base_out = str(args.get("base_output_dir", "./output"))
+            try:
+                resolve_safe_workspace_path(base_out)
+            except ValueError as exc:
+                return {
+                    "isError": True,
+                    "content": [{"type": "text", "text": json.dumps({"valid": False, "error": str(exc)}, indent=2)}],
+                }
+            res_str = recommend_odb_architecture_wizard(
+                project_id=str(args.get("project_id", "my-odb-project-01")),
+                region=str(args.get("region", "us-east4")),
+                gcp_oracle_zone=str(args.get("gcp_oracle_zone", "us-east4-b-r1")),
+                workload_profile=str(args.get("workload_profile", "autonomous_ai_lakehouse")),
+                ha_dr_tier=str(args.get("ha_dr_tier", "regional_ha")),
+                cpu_cores_needed=int(args.get("cpu_cores_needed", 8)),
+                storage_tb_needed=int(args.get("storage_tb_needed", 2)),
+                network_governance=str(args.get("network_governance", "standalone_vpc")),
+                encryption_compliance=str(args.get("encryption_compliance", "google_managed")),
+                procurement_preference=str(args.get("procurement_preference", "private_offer")),
+                separation_of_duties_mode=str(args.get("separation_of_duties_mode", "full_stack")),
+                vpc_cidr=str(args.get("vpc_cidr", "10.10.0.0/16")),
+                client_subnet_cidr=str(args.get("client_subnet_cidr", "10.20.1.0/24")),
+                backup_subnet_cidr=str(args.get("backup_subnet_cidr", "10.20.2.0/24")),
+                generate_artifacts=bool(args.get("generate_artifacts", False)),
+                bundle_name=str(args.get("bundle_name", "")),
+                base_output_dir=base_out,
+            )
+            parsed = json.loads(res_str)
+            return {
+                "isError": not parsed.get("valid", True),
+                "content": [{"type": "text", "text": res_str}],
+            }
+
+        if tool_name == "manage_onboarding_progress_tracker":
+            res_str = manage_onboarding_progress_tracker(
+                action=str(args.get("action", "status")),
+                project_id=str(args.get("project_id", "my-odb-project-01")),
+                region=str(args.get("region", "us-east4")),
+                phase_id=str(args.get("phase_id", "")),
+                status=str(args.get("status", "")),
+                notes=str(args.get("notes", "")),
+                tracker_file=str(args.get("tracker_file", "./output/onboarding_progress.json")),
+            )
+            parsed = json.loads(res_str)
+            return {
+                "isError": not parsed.get("valid", True),
+                "content": [{"type": "text", "text": res_str}],
+            }
+
+        if tool_name == "simulate_day2_scaling_what_if":
+            res_str = simulate_day2_scaling_what_if(
+                workload_type=str(args.get("workload_type", "adb")),
+                project_id=str(args.get("project_id", "my-odb-project-01")),
+                region=str(args.get("region", "us-east4")),
+                current_gcp_oracle_zone=str(args.get("current_gcp_oracle_zone", "us-east4-b-r1")),
+                proposed_gcp_oracle_zone=str(args.get("proposed_gcp_oracle_zone", "us-east4-b-r1")),
+                current_odb_network=str(args.get("current_odb_network", "odb-prod-net")),
+                proposed_odb_network=str(args.get("proposed_odb_network", "odb-prod-net")),
+                current_client_subnet_cidr=str(args.get("current_client_subnet_cidr", "10.20.1.0/24")),
+                proposed_client_subnet_cidr=str(args.get("proposed_client_subnet_cidr", "10.20.1.0/24")),
+                current_db_name=str(args.get("current_db_name", "ODBPROD1")),
+                proposed_db_name=str(args.get("proposed_db_name", "ODBPROD1")),
+                current_compute_count=int(args.get("current_compute_count", 4)),
+                proposed_compute_count=int(args.get("proposed_compute_count", 8)),
+                current_storage_size_tb=int(args.get("current_storage_size_tb", 1)),
+                proposed_storage_size_tb=int(args.get("proposed_storage_size_tb", 2)),
+                current_auto_scaling=bool(args.get("current_auto_scaling", True)),
+                proposed_auto_scaling=bool(args.get("proposed_auto_scaling", True)),
+                current_deletion_protection=bool(args.get("current_deletion_protection", True)),
+                proposed_deletion_protection=bool(args.get("proposed_deletion_protection", True)),
+                apply_to_bundle_dir=str(args.get("apply_to_bundle_dir", "")),
+            )
+            parsed = json.loads(res_str)
+            return {
+                "isError": not parsed.get("valid", True),
+                "content": [{"type": "text", "text": res_str}],
+            }
+
+        if tool_name == "get_guardrail_telemetry_report":
+            res_str = audit_workspace_and_hcl_guardrails(
+                workspace_dir=str(args.get("workspace_dir", "./output")),
+                hcl_content=str(args.get("hcl_content", "")),
+                response_text=str(args.get("response_text", "")),
+                vpc_cidr=str(args.get("vpc_cidr", "10.10.0.0/16")),
+                client_subnet_cidr=str(args.get("client_subnet_cidr", "10.20.1.0/24")),
+                backup_subnet_cidr=str(args.get("backup_subnet_cidr", "10.20.2.0/24")),
             )
             parsed = json.loads(res_str)
             return {

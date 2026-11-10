@@ -26,6 +26,13 @@ from ai_agent.tools.day2_maintenance import (
 from ai_agent.tools.diagram_generator import generate_odb_architecture_diagram
 from ai_agent.tools.docs_fetcher import fetch_official_odb_documentation
 from ai_agent.tools.golden_templates import generate_golden_odb_terraform
+from ai_agent.tools.interactive_workflows import (
+    TOOL_TO_GUARDRAIL_LAYER,
+    build_guardrail_telemetry_summary,
+    manage_onboarding_progress_tracker,
+    recommend_odb_architecture_wizard,
+    simulate_day2_scaling_what_if,
+)
 from ai_agent.tools.network_validator import (
     save_generated_terraform_bundle,
     validate_odb_network_cidrs,
@@ -54,10 +61,11 @@ SYSTEM_INSTRUCTION = """You are the **Oracle@Google Onboarding Agent** (Oracle D
 You guide customers through the ENTIRE Oracle Database@Google Cloud (ODB@GCP) onboarding journey, architecture design, visual diagramming, Day-1 Terraform generation, and Day-2 maintenance with zero hallucinations.
 
 Always enforce these 6 Guardrails:
-1. **Guardrail 1 — Grounded End-to-End Onboarding, Architecture & Separation-of-Duties Knowledge**:
-   - Whenever a customer asks about **Prerequisites, IAM roles, Separation of Duties (Procurement, Network, Infrastructure, Database teams), GCP APIs, Google Cloud Marketplace (Private Offer vs. Pay-As-You-Go / PAYG), OCI Account Linking, My Oracle Support (MOS) & CSI Registration, ODB Networks, Networking Options (Standalone VPC, Shared VPC, Hub-and-Spoke, DNS), Backup & Recovery, Encryption & CMEK (Cloud KMS / OCI Vault), or Monitoring & Observability**, ALWAYS call `get_odb_onboarding_and_architecture_guide` (including `topic="separation_of_duties"`) or `evaluate_customer_onboarding_readiness` (passing `team_role` when a specific team persona is mentioned) first so your answer is 100% grounded.
+1. **Guardrail 1 — Grounded End-to-End Onboarding, Architecture, Progress Tracking & Separation-of-Duties Knowledge**:
+   - Whenever a customer asks about **Prerequisites, IAM roles, Separation of Duties (Procurement, Network, Infrastructure, Database teams), GCP APIs, Google Cloud Marketplace (Private Offer vs. Pay-As-You-Go / PAYG), OCI Account Linking, My Oracle Support (MOS) & CSI Registration, ODB Networks, Networking Options (Standalone VPC, Shared VPC, Hub-and-Spoke, DNS), Backup & Recovery, Encryption & CMEK (Cloud KMS / OCI Vault), or Monitoring & Observability**, ALWAYS call `get_odb_onboarding_and_architecture_guide` (including `topic="separation_of_duties"`), `evaluate_customer_onboarding_readiness`, or `manage_onboarding_progress_tracker` first so your answer is 100% grounded.
    - NEVER claim that ODB@GCP requires a manual IPSec VPN between GCP and OCI; `google_oracle_database_odb_network` uses Google's managed partner interconnect inside the colocated `gcp_oracle_zone`.
-2. **Guardrail 2 — Grounded Architecture & Flow Diagrams**:
+2. **Guardrail 2 — Grounded Architecture Discovery Wizard & Flow Diagrams**:
+   - When a customer asks which ODB@GCP service or topology to choose, or wants a sized architecture recommendation, call `recommend_odb_architecture_wizard`.
    - Whenever a customer asks to illustrate or generate a diagram (e.g., end-to-end onboarding flow, ODB Network topology, Shared VPC, Hub-and-Spoke HA/DR, Backup & Recovery, CMEK Encryption, or Monitoring), ALWAYS call `generate_odb_architecture_diagram` to retrieve syntax-verified Mermaid (`mermaid`) and ASCII diagrams.
    - When emitting Mermaid diagrams, always enclose node labels containing parentheses `(...)` in double quotes (e.g., `A["Node (Detail)"]`).
 3. **Guardrail 3 — Golden Baseline First & Layered Separation-of-Duties Terraform**:
@@ -74,8 +82,8 @@ Always enforce these 6 Guardrails:
    - Always call `validate_odb_network_cidrs` to verify `/28` minimum subnet prefixes and zero CIDR overlap.
    - Call `discover_live_odb_regions_and_zones`, `discover_live_odb_shapes_and_versions`, `check_live_vpc_subnet_overlaps`, and `check_customer_gcp_readiness` (passing `team_role` when verifying least-privilege IAM for Network, Infrastructure, Database, or Procurement teams) to ground configurations in the customer's real GCP project.
    - Never place `admin_password` values in `terraform.tfvars`; use `var.db_admin_password` (`sensitive = true`).
-6. **Guardrail 6 — Safe Day-2 Maintenance (No Accidental Destroy)**:
-   - Before modifying existing customer Terraform files, call `inspect_existing_terraform_workspace` and `analyze_day2_terraform_diff` to ensure no `ForceNew` immutable attribute (`odb_network_id`, `cidr_range`, `gcp_oracle_zone`, `database`, `shape`) is changed in a way that would trigger `-/+ destroy and recreate` on a live production database.
+6. **Guardrail 6 — Safe Day-2 Maintenance & What-If Simulator (No Accidental Destroy)**:
+   - Before modifying existing customer Terraform files or answering Day-2 scaling questions, call `inspect_existing_terraform_workspace`, `analyze_day2_terraform_diff`, or `simulate_day2_scaling_what_if` to ensure no `ForceNew` immutable attribute (`odb_network_id`, `cidr_range`, `gcp_oracle_zone`, `database`, `shape`) is changed in a way that would trigger `-/+ destroy and recreate` on a live production database.
    - Never run `terraform apply` or `terraform destroy` directly; leave applying changes to the customer or their CI/CD pipeline.
 """
 
@@ -90,6 +98,7 @@ class ToolCallTrace:
     arguments: dict[str, Any]
     result_preview: str
     duration_ms: float
+    guardrail_layer: str = ""
 
 
 @dataclass
@@ -102,6 +111,7 @@ class AgentTurnResponse:
     tool_traces: list[ToolCallTrace] = field(default_factory=list)
     guardrail_verified: bool = True
     auto_repairs_triggered: int = 0
+    guardrail_scorecard: dict[str, Any] = field(default_factory=dict)
 
 
 def extract_hcl_blocks(markdown_text: str) -> list[str]:
@@ -117,6 +127,7 @@ class ODBArchitectAgent:
         self.max_auto_repairs = max_auto_repairs
         self.client = create_genai_client(config)
         self._current_turn_traces: list[ToolCallTrace] = []
+        self._active_event_callback: Callable[[dict[str, Any]], None] | None = None
         self._tools = self._build_instrumented_tools()
         self._chat = self.client.chats.create(
             model=self.config.model,
@@ -127,10 +138,33 @@ class ODBArchitectAgent:
             ),
         )
 
+    def _emit_event(self, event: dict[str, Any]) -> None:
+        """Emits a live telemetry event to `self._active_event_callback` if registered."""
+        if self._active_event_callback is not None:
+            try:
+                self._active_event_callback(event)
+            except Exception:
+                pass
+
     def _wrap_tool(self, fn: Callable[..., str]) -> Callable[..., str]:
-        """Wraps a tool function so every invocation by Gemini is timed and logged."""
+        """Wraps a tool function so every invocation by Gemini is timed, logged, and streamed."""
 
         def wrapped(**kwargs: Any) -> str:
+            layer_info = TOOL_TO_GUARDRAIL_LAYER.get(
+                fn.__name__,
+                {
+                    "layer_id": "layer_5",
+                    "layer_name": "Layer 5: Post-Gen Compiler Auto-Repair & Day-2 ForceNew Guard",
+                },
+            )
+            self._emit_event(
+                {
+                    "event_type": "tool_start",
+                    "tool_name": fn.__name__,
+                    "arguments": dict(kwargs),
+                    "guardrail_layer": layer_info["layer_name"],
+                }
+            )
             start = time.perf_counter()
             try:
                 output = fn(**kwargs)
@@ -138,13 +172,23 @@ class ODBArchitectAgent:
                 output = f'{{"error": "{exc}"}}'
             elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
             preview = output if len(output) <= 600 else output[:600] + "\n...[truncated]"
-            self._current_turn_traces.append(
-                ToolCallTrace(
-                    tool_name=fn.__name__,
-                    arguments=dict(kwargs),
-                    result_preview=preview,
-                    duration_ms=elapsed_ms,
-                )
+            trace_obj = ToolCallTrace(
+                tool_name=fn.__name__,
+                arguments=dict(kwargs),
+                result_preview=preview,
+                duration_ms=elapsed_ms,
+                guardrail_layer=layer_info["layer_name"],
+            )
+            self._current_turn_traces.append(trace_obj)
+            self._emit_event(
+                {
+                    "event_type": "tool_complete",
+                    "tool_name": fn.__name__,
+                    "arguments": dict(kwargs),
+                    "duration_ms": elapsed_ms,
+                    "guardrail_layer": layer_info["layer_name"],
+                    "result_preview": preview,
+                }
             )
             return output
 
@@ -157,10 +201,12 @@ class ODBArchitectAgent:
         return wrapped
 
     def _build_instrumented_tools(self) -> list[Callable[..., str]]:
-        """Returns the list of 17 onboarding, diagramming, live discovery, golden template, and Day-2 tools."""
+        """Returns the list of 20 onboarding, wizard, tracker, diagramming, live discovery, golden template, and Day-2 tools."""
         raw_tools: list[Callable[..., str]] = [
             get_odb_onboarding_and_architecture_guide,
             evaluate_customer_onboarding_readiness,
+            manage_onboarding_progress_tracker,
+            recommend_odb_architecture_wizard,
             generate_odb_architecture_diagram,
             generate_golden_odb_terraform,
             get_latest_google_provider_version,
@@ -176,68 +222,110 @@ class ODBArchitectAgent:
             save_generated_terraform_bundle,
             inspect_existing_terraform_workspace,
             analyze_day2_terraform_diff,
+            simulate_day2_scaling_what_if,
         ]
         return [self._wrap_tool(fn) for fn in raw_tools]
 
-    def send_message(self, user_message: str) -> AgentTurnResponse:
-        """Sends a user message, executes tools, and runs post-generation HCL + onboarding guardrail verification."""
+    def send_message(
+        self,
+        user_message: str,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
+    ) -> AgentTurnResponse:
+        """Sends a user message, streams live tool telemetry via `on_event`, and runs post-generation HCL + onboarding guardrail verification."""
         self._current_turn_traces = []
-        response = self._chat.send_message(user_message)
-        reply_text = response.text or "(No text returned by model)"
+        self._active_event_callback = on_event
+        try:
+            response = self._chat.send_message(user_message)
+            reply_text = response.text or "(No text returned by model)"
 
-        repairs = 0
-        guardrail_ok = True
+            repairs = 0
+            guardrail_ok = True
 
-        # Post-generation Guardrail: Inspect emitted HCL blocks AND onboarding/diagram content
-        for attempt in range(self.max_auto_repairs):
-            hcl_blocks = extract_hcl_blocks(reply_text)
-            start_check = time.perf_counter()
-            issues: list[str] = []
-            if hcl_blocks:
-                combined_hcl = "\n\n".join(hcl_blocks)
-                issues.extend(check_hcl_for_provider_hallucinations(combined_hcl))
-            issues.extend(check_onboarding_response_for_hallucinations(reply_text))
-            elapsed_ms = round((time.perf_counter() - start_check) * 1000, 1)
+            # Post-generation Guardrail: Inspect emitted HCL blocks AND onboarding/diagram content
+            for attempt in range(self.max_auto_repairs):
+                hcl_blocks = extract_hcl_blocks(reply_text)
+                start_check = time.perf_counter()
+                issues: list[str] = []
+                if hcl_blocks:
+                    combined_hcl = "\n\n".join(hcl_blocks)
+                    issues.extend(check_hcl_for_provider_hallucinations(combined_hcl))
+                issues.extend(check_onboarding_response_for_hallucinations(reply_text))
+                elapsed_ms = round((time.perf_counter() - start_check) * 1000, 1)
 
-            if hcl_blocks or issues:
-                self._current_turn_traces.append(
-                    ToolCallTrace(
-                        tool_name="post_generation_hcl_guardrail",
-                        arguments={
-                            "hcl_blocks_inspected": len(hcl_blocks),
-                            "attempt": attempt + 1,
-                        },
-                        result_preview=json.dumps(
-                            {"passed": len(issues) == 0, "issues": issues},
-                            indent=2,
-                        ),
-                        duration_ms=elapsed_ms,
+                if hcl_blocks or issues:
+                    self._current_turn_traces.append(
+                        ToolCallTrace(
+                            tool_name="post_generation_hcl_guardrail",
+                            arguments={
+                                "hcl_blocks_inspected": len(hcl_blocks),
+                                "attempt": attempt + 1,
+                            },
+                            result_preview=json.dumps(
+                                {"passed": len(issues) == 0, "issues": issues},
+                                indent=2,
+                            ),
+                            duration_ms=elapsed_ms,
+                            guardrail_layer="Layer 5: Post-Gen Compiler Auto-Repair & Day-2 ForceNew Guard",
+                        )
                     )
+                self._emit_event(
+                    {
+                        "event_type": "guardrail_verify",
+                        "passed": len(issues) == 0,
+                        "issues": issues,
+                        "hcl_blocks_inspected": len(hcl_blocks),
+                        "attempt": attempt + 1,
+                        "duration_ms": elapsed_ms,
+                    }
                 )
 
-            if not issues:
-                guardrail_ok = True
-                break
+                if not issues:
+                    guardrail_ok = True
+                    break
 
-            # Trigger automatic self-healing turn with the exact compiler/schema/onboarding errors
-            guardrail_ok = False
-            repairs += 1
-            repair_prompt = (
-                "[GUARDRAIL AUTO-REPAIR] Your response contained onboarding, diagram, or Terraform schema hallucinations:\n"
-                + "\n".join(f"- {iss}" for iss in issues)
-                + "\nPlease fix the response using the grounded ODB@GCP onboarding rules and exact `hashicorp/google` (`google_oracle_database_*`) schema."
+                # Trigger automatic self-healing turn with the exact compiler/schema/onboarding errors
+                guardrail_ok = False
+                repairs += 1
+                self._emit_event(
+                    {
+                        "event_type": "auto_repair",
+                        "attempt": attempt + 1,
+                        "issues": issues,
+                    }
+                )
+                repair_prompt = (
+                    "[GUARDRAIL AUTO-REPAIR] Your response contained onboarding, diagram, or Terraform schema hallucinations:\n"
+                    + "\n".join(f"- {iss}" for iss in issues)
+                    + "\nPlease fix the response using the grounded ODB@GCP onboarding rules and exact `hashicorp/google` (`google_oracle_database_*`) schema."
+                )
+                repair_resp = self._chat.send_message(repair_prompt)
+                reply_text = repair_resp.text or reply_text
+
+            serialized_for_scorecard = [
+                {
+                    "tool_name": t.tool_name,
+                    "arguments": t.arguments,
+                    "duration_ms": t.duration_ms,
+                }
+                for t in self._current_turn_traces
+            ]
+            scorecard = build_guardrail_telemetry_summary(
+                serialized_for_scorecard,
+                guardrail_verified=guardrail_ok,
+                auto_repairs_triggered=repairs,
             )
-            repair_resp = self._chat.send_message(repair_prompt)
-            reply_text = repair_resp.text or reply_text
 
-        return AgentTurnResponse(
-            text=reply_text,
-            model=self.config.model,
-            auth_mode=self.config.auth_mode,
-            tool_traces=list(self._current_turn_traces),
-            guardrail_verified=guardrail_ok,
-            auto_repairs_triggered=repairs,
-        )
+            return AgentTurnResponse(
+                text=reply_text,
+                model=self.config.model,
+                auth_mode=self.config.auth_mode,
+                tool_traces=list(self._current_turn_traces),
+                guardrail_verified=guardrail_ok,
+                auto_repairs_triggered=repairs,
+                guardrail_scorecard=scorecard,
+            )
+        finally:
+            self._active_event_callback = None
 
 
 ODBOnboardingAgent = ODBArchitectAgent

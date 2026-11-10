@@ -46,7 +46,19 @@ from ai_agent.tools.diagram_generator import (
     generate_odb_architecture_diagram,
 )
 from ai_agent.tools.golden_templates import generate_golden_odb_terraform
-from ai_agent.tools.network_validator import save_generated_terraform_bundle
+from ai_agent.tools.interactive_diagram import render_standalone_interactive_html
+from ai_agent.tools.interactive_workflows import (
+    SUPPORTED_HA_DR_TIERS,
+    SUPPORTED_NETWORK_GOVERNANCE_MODES,
+    SUPPORTED_WORKLOAD_PROFILES,
+    manage_onboarding_progress_tracker,
+    recommend_odb_architecture_wizard,
+    simulate_day2_scaling_what_if,
+)
+from ai_agent.tools.network_validator import (
+    resolve_safe_workspace_path,
+    save_generated_terraform_bundle,
+)
 from ai_agent.tools.onboarding_knowledge import (
     SUPPORTED_ONBOARDING_TOPICS,
     get_odb_onboarding_and_architecture_guide,
@@ -61,8 +73,8 @@ from ai_agent.tools.terraform_registry import (
 app = typer.Typer(
     name="odb-onboarding-agent",
     help=(
-        "Oracle@Google Onboarding Agent — End-to-End Onboarding Lifecycle, Architecture & "
-        "Diagram Generator, Production Terraform Code Generator, Day-2 Maintenance Guard, and IDE MCP Server."
+        "Oracle@Google Onboarding Agent — End-to-End Onboarding Lifecycle, Guided Architecture Wizard, "
+        "6-Phase Progress Tracker, Interactive Topology Studio, Production Terraform Generator, Day-2 Simulator, and IDE MCP Server."
     ),
     add_completion=False,
 )
@@ -70,16 +82,17 @@ console = Console()
 
 
 def _render_tool_traces(turn: AgentTurnResponse) -> None:
-    """Renders a Rich table showing all live tools and guardrail checks invoked during the turn."""
+    """Renders a Rich table showing all live tools, mapped Guardrail Layer, and 5-Layer Scorecard."""
     if not turn.tool_traces:
         return
     table = Table(
-        title="Live Agent Tool & Guardrail Invocations",
+        title="Live Agent Tool & 5-Layer Guardrail Telemetry",
         show_header=True,
         header_style="bold cyan",
     )
     table.add_column("#", style="dim", width=4)
-    table.add_column("Tool / Guardrail", style="bold green")
+    table.add_column("Tool / Check", style="bold green")
+    table.add_column("Guardrail Layer", style="cyan")
     table.add_column("Arguments", style="yellow")
     table.add_column("Latency", justify="right", style="magenta")
 
@@ -87,10 +100,21 @@ def _render_tool_traces(turn: AgentTurnResponse) -> None:
         table.add_row(
             str(idx),
             trace.tool_name,
+            getattr(trace, "guardrail_layer", "") or "Layer 5: Post-Gen & Day-2 Guard",
             json.dumps(trace.arguments),
             f"{trace.duration_ms:.1f} ms",
         )
     console.print(table)
+    scorecard = getattr(turn, "guardrail_scorecard", None) or {}
+    if scorecard:
+        console.print(
+            f"[bold green]5-Layer Guardrail Scorecard:[/bold green] "
+            f"Status=[bold]{scorecard.get('overall_status', 'VERIFIED')}[/bold] | "
+            f"Active Layers={scorecard.get('active_guardrail_layers', 1)}/5 | "
+            f"Tool Calls={scorecard.get('total_tool_invocations', len(turn.tool_traces))} | "
+            f"Auto-Repairs={scorecard.get('auto_repairs_triggered', 0)} | "
+            f"Total Tool Time={scorecard.get('total_duration_ms', 0.0)} ms"
+        )
 
 
 @app.command("doctor")
@@ -412,6 +436,281 @@ def inspect_day2(
         raise typer.Exit(code=1)
 
 
+@app.command("wizard")
+def wizard(
+    project_id: str = typer.Option(
+        "my-odb-project-01",
+        "--project-id",
+        help="Target GCP project ID.",
+    ),
+    region: str = typer.Option("us-east4", "--region", help="Target GCP region."),
+    oracle_zone: str = typer.Option("us-east4-b-r1", "--oracle-zone", help="Target colocated gcp_oracle_zone."),
+    workload_profile: str = typer.Option(
+        "autonomous_ai_lakehouse",
+        "--workload-profile",
+        "-w",
+        help="Workload profile: " + ", ".join(SUPPORTED_WORKLOAD_PROFILES),
+    ),
+    ha_dr_tier: str = typer.Option(
+        "regional_ha",
+        "--ha-dr-tier",
+        help="HA/DR tier: " + ", ".join(SUPPORTED_HA_DR_TIERS),
+    ),
+    cores: int = typer.Option(8, "--cores", help="Estimated ECPU / OCPU compute cores needed."),
+    storage_tb: int = typer.Option(2, "--storage-tb", help="Estimated data storage in TB."),
+    network_governance: str = typer.Option(
+        "standalone_vpc",
+        "--network-governance",
+        help="Networking mode: " + ", ".join(SUPPORTED_NETWORK_GOVERNANCE_MODES),
+    ),
+    encryption: str = typer.Option(
+        "google_managed",
+        "--encryption",
+        help="Encryption compliance: google_managed, gcp_cmek, or oci_vault.",
+    ),
+    separation_of_duties: str = typer.Option(
+        "full_stack",
+        "--separation-of-duties",
+        help="'full_stack' or 'enterprise_layered'.",
+    ),
+    generate_bundle: bool = typer.Option(
+        False,
+        "--generate-bundle",
+        help="Also generate and validate the recommended Golden Terraform bundle inside ./output.",
+    ),
+    save_html: bool = typer.Option(
+        False,
+        "--save-html",
+        help="Also export the recommended Interactive HTML5 Topology Explorer inside ./output/diagrams.",
+    ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        "-i",
+        help="Prompt interactively for workload, HA/DR, sizing, and networking choices in the terminal.",
+    ),
+) -> None:
+    """Guided Interactive Architecture Discovery & Sizing Wizard (Part 2 Item 4)."""
+    if interactive:
+        project_id = typer.prompt("1. Target GCP Project ID", default=project_id)
+        workload_profile = typer.prompt(
+            f"2. Workload Profile ({'/'.join(SUPPORTED_WORKLOAD_PROFILES)})",
+            default=workload_profile,
+        )
+        ha_dr_tier = typer.prompt(
+            f"3. HA/DR Tier ({'/'.join(SUPPORTED_HA_DR_TIERS)})",
+            default=ha_dr_tier,
+        )
+        cores = int(typer.prompt("4. Estimated ECPU / OCPU Cores Needed", default=str(cores)))
+        storage_tb = int(typer.prompt("5. Estimated Storage Needed (TB)", default=str(storage_tb)))
+        network_governance = typer.prompt(
+            f"6. Network Governance ({'/'.join(SUPPORTED_NETWORK_GOVERNANCE_MODES)})",
+            default=network_governance,
+        )
+        encryption = typer.prompt(
+            "7. Encryption Compliance (google_managed/gcp_cmek/oci_vault)",
+            default=encryption,
+        )
+
+    payload = json.loads(
+        recommend_odb_architecture_wizard(
+            project_id=project_id,
+            region=region,
+            gcp_oracle_zone=oracle_zone,
+            workload_profile=workload_profile,
+            ha_dr_tier=ha_dr_tier,
+            cpu_cores_needed=cores,
+            storage_tb_needed=storage_tb,
+            network_governance=network_governance,
+            encryption_compliance=encryption,
+            separation_of_duties_mode=separation_of_duties,
+            generate_artifacts=generate_bundle,
+        )
+    )
+    if not payload.get("valid"):
+        console.print_json(data=payload)
+        raise typer.Exit(code=1)
+
+    summary = payload.get("wizard_summary", {})
+    table = Table(
+        title="Oracle@Google Guided Architecture & Sizing Recommendation",
+        show_lines=True,
+        header_style="bold cyan",
+    )
+    table.add_column("Dimension", style="bold green")
+    table.add_column("Recommended Specification", style="white")
+    table.add_row("Recommended ODB Service", f"[bold]{summary.get('recommended_workload_type')}[/bold] — {summary.get('recommended_shape')}")
+    table.add_row("Sizing Baseline", f"{summary.get('recommended_compute_count')} Cores (ECPU/OCPU) | {summary.get('recommended_storage_size_tb')} TB Storage")
+    table.add_row("Networking & Diagram", f"{summary.get('recommended_networking_topology')} ({summary.get('recommended_diagram_type')})")
+    table.add_row("HA / DR Strategy", str(summary.get("dr_strategy")))
+    table.add_row("Separation-of-Duties Layers", ", ".join(summary.get("separation_of_duties_layers", [])))
+    table.add_row("Terraform Resources", "\n".join(summary.get("terraform_resources", [])))
+    console.print(table)
+
+    for note in summary.get("architectural_rationale", []):
+        console.print(f"• {note}")
+
+    if payload.get("generated_bundle") and payload["generated_bundle"].get("saved"):
+        gb = payload["generated_bundle"]
+        console.print(
+            Panel.fit(
+                f"[bold green]Recommended Golden Terraform Bundle Generated![/bold green]\n"
+                f"Output Directory: [bold cyan]{gb.get('output_directory')}[/bold cyan]\n"
+                f"Files: {', '.join(gb.get('written_files', []))}",
+                border_style="green",
+            )
+        )
+
+    if save_html and isinstance(payload.get("interactive_spec"), dict):
+        diag_dir = resolve_safe_workspace_path("./output/diagrams")
+        diag_dir.mkdir(parents=True, exist_ok=True)
+        html_file = (diag_dir / f"wizard_{summary.get('recommended_diagram_type', 'topology')}.html").resolve()
+        if str(html_file).startswith(str(diag_dir) + os.sep):
+            html_file.write_text(
+                render_standalone_interactive_html(payload["interactive_spec"]),
+                encoding="utf-8",
+            )
+            console.print(f"[bold green]Saved Interactive HTML5 Topology to:[/bold green] {html_file}")
+
+
+@app.command("tracker")
+def tracker(
+    action: str = typer.Option(
+        "status",
+        "--action",
+        "-a",
+        help="Tracker action: 'status', 'auto_verify', 'update_phase', or 'reset'.",
+    ),
+    project_id: str = typer.Option("my-odb-project-01", "--project-id", help="Target GCP project ID."),
+    region: str = typer.Option("us-east4", "--region", help="Target GCP region."),
+    phase: str = typer.Option("", "--phase", "-p", help="Phase ID for update_phase (phase_1 .. phase_6 or 1 .. 6)."),
+    status: str = typer.Option("", "--status", "-s", help="New status for update_phase: completed, in_progress, blocked, or pending."),
+    notes: str = typer.Option("", "--notes", "-n", help="Optional phase note or blocker reason."),
+    tracker_file: str = typer.Option(
+        "./output/onboarding_progress.json",
+        "--tracker-file",
+        help="Workspace-relative path to persist onboarding tracker state.",
+    ),
+) -> None:
+    """Stateful 6-Phase Onboarding Progress Tracker with Digital Twin auto-verification (Part 2 Item 5)."""
+    payload = json.loads(
+        manage_onboarding_progress_tracker(
+            action=action,
+            project_id=project_id,
+            region=region,
+            phase_id=phase,
+            status=status,
+            notes=notes,
+            tracker_file=tracker_file,
+        )
+    )
+    if not payload.get("valid"):
+        console.print_json(data=payload)
+        raise typer.Exit(code=1)
+
+    console.print(
+        Panel.fit(
+            f"[bold cyan]Oracle@Google 6-Phase Onboarding Progress Tracker[/bold cyan]\n"
+            f"Project: [bold]{payload.get('project_id')}[/bold] ({payload.get('region')}) | "
+            f"Overall Completion: [bold green]{payload.get('completion_pct')}%[/bold green] "
+            f"({payload.get('completed_phases')}/{payload.get('total_phases')} phases completed)\n"
+            f"State File: [dim]{payload.get('tracker_file')}[/dim]",
+            border_style="cyan",
+        )
+    )
+    table = Table(show_lines=True, header_style="bold")
+    table.add_column("Phase", style="bold cyan")
+    table.add_column("Owner", style="yellow")
+    table.add_column("Status")
+    table.add_column("Verification Command / Notes")
+
+    for ph in payload.get("phases", []):
+        st_val = str(ph.get("status", "pending")).lower()
+        if st_val == "completed":
+            st_badge = "[bold green]COMPLETED[/bold green]"
+        elif st_val == "blocked":
+            st_badge = "[bold red]BLOCKED[/bold red]"
+        elif st_val == "in_progress":
+            st_badge = "[bold yellow]IN PROGRESS[/bold yellow]"
+        else:
+            st_badge = "[dim]PENDING[/dim]"
+        note_str = f"\nNote: {ph.get('notes')}" if ph.get("notes") else ""
+        table.add_row(
+            str(ph.get("title")),
+            str(ph.get("team_owner")).upper(),
+            st_badge,
+            f"{ph.get('verification_command')}{note_str}",
+        )
+    console.print(table)
+
+
+@app.command("simulate-day2")
+def simulate_day2(
+    workload: str = typer.Option("adb", "--workload", "-w", help="Workload: adb, exadata_dedicated, exascale, or basedb."),
+    project_id: str = typer.Option("my-odb-project-01", "--project-id", help="Target GCP project ID."),
+    region: str = typer.Option("us-east4", "--region", help="Target GCP region."),
+    current_compute: int = typer.Option(4, "--current-compute", help="Current ECPU/OCPU count."),
+    proposed_compute: int = typer.Option(8, "--proposed-compute", help="Proposed ECPU/OCPU count."),
+    current_storage_tb: int = typer.Option(1, "--current-storage-tb", help="Current storage in TB."),
+    proposed_storage_tb: int = typer.Option(2, "--proposed-storage-tb", help="Proposed storage in TB."),
+    current_cidr: str = typer.Option("10.20.1.0/24", "--current-cidr", help="Current CLIENT_SUBNET CIDR."),
+    proposed_cidr: str = typer.Option("10.20.1.0/24", "--proposed-cidr", help="Proposed CLIENT_SUBNET CIDR (ForceNew if changed)."),
+    current_zone: str = typer.Option("us-east4-b-r1", "--current-zone", help="Current gcp_oracle_zone."),
+    proposed_zone: str = typer.Option("us-east4-b-r1", "--proposed-zone", help="Proposed gcp_oracle_zone (ForceNew if changed)."),
+    deletion_protection: bool = typer.Option(True, "--deletion-protection/--no-deletion-protection", help="Proposed deletion_protection setting."),
+    apply_to_bundle: str = typer.Option("", "--apply-to-bundle", help="Optional workspace directory to write day2_simulated_update.tf if safe."),
+    save_html: bool = typer.Option(False, "--save-html", help="Export Day-2 Blast-Radius Interactive HTML5 Topology inside ./output/diagrams."),
+) -> None:
+    """Interactive Day-2 What-If Scaling & ForceNew Simulator (Part 2 Item 6)."""
+    payload = json.loads(
+        simulate_day2_scaling_what_if(
+            workload_type=workload,
+            project_id=project_id,
+            region=region,
+            current_gcp_oracle_zone=current_zone,
+            proposed_gcp_oracle_zone=proposed_zone,
+            current_client_subnet_cidr=current_cidr,
+            proposed_client_subnet_cidr=proposed_cidr,
+            current_compute_count=current_compute,
+            proposed_compute_count=proposed_compute,
+            current_storage_size_tb=current_storage_tb,
+            proposed_storage_size_tb=proposed_storage_tb,
+            proposed_deletion_protection=deletion_protection,
+            apply_to_bundle_dir=apply_to_bundle,
+        )
+    )
+    is_safe = bool(payload.get("safe_day2_change", True))
+    border = "green" if is_safe else "red"
+    status_str = "[bold green]SAFE ONLINE SCALING (~ update in-place)[/bold green]" if is_safe else "[bold red]CRITICAL FORCENEW HAZARD (-/+ destroy and recreate)[/bold red]"
+    console.print(
+        Panel.fit(
+            f"Day-2 What-If Simulation: {status_str}\n"
+            f"Workload: [bold]{payload.get('workload_type')}[/bold] | "
+            f"Compute Delta: {payload.get('delta_summary', {}).get('compute_delta'):+d} | "
+            f"Storage Delta: {payload.get('delta_summary', {}).get('storage_tb_delta'):+d} TB\n"
+            f"Impact: {payload.get('downtime_impact')}",
+            border_style=border,
+        )
+    )
+    if payload.get("deletion_protection_warning"):
+        console.print(f"[bold yellow]{payload['deletion_protection_warning']}[/bold yellow]")
+    if payload.get("save_blocked_reason"):
+        console.print(f"[bold red]{payload['save_blocked_reason']}[/bold red]")
+    elif payload.get("saved_file"):
+        console.print(f"[bold green]Saved safe Day-2 update to:[/bold green] {payload['saved_file']}")
+
+    if save_html and isinstance(payload.get("interactive_spec"), dict):
+        diag_dir = resolve_safe_workspace_path("./output/diagrams")
+        diag_dir.mkdir(parents=True, exist_ok=True)
+        html_file = (diag_dir / "day2_blast_radius_simulation.html").resolve()
+        if str(html_file).startswith(str(diag_dir) + os.sep):
+            html_file.write_text(
+                render_standalone_interactive_html(payload["interactive_spec"]),
+                encoding="utf-8",
+            )
+            console.print(f"[bold green]Saved Day-2 Blast-Radius Interactive HTML5 Topology to:[/bold green] {html_file}")
+
+
 @app.command("mcp-serve")
 def mcp_serve() -> None:
     """Starts the Model Context Protocol (MCP) stdio server for VS Code, Cursor, Claude Desktop, and Antigravity IDE.
@@ -437,7 +736,7 @@ def ask(
         help=f"Gemini model ID (overrides ODB_AGENT_MODEL / GEMINI_MODEL env var; default: {DEFAULT_MODEL}).",
     ),
 ) -> None:
-    """Sends a single prompt to the Oracle@Google Onboarding Agent and displays the live tool trace + answer."""
+    """Sends a single prompt to the Oracle@Google Onboarding Agent and streams live 5-Layer Guardrail telemetry + answer."""
     config = resolve_llm_config(
         auth_mode=auth_mode,  # type: ignore[arg-type]
         model=model,
@@ -445,8 +744,23 @@ def ask(
         location=location,
     )
     agent = ODBOnboardingAgent(config)
-    with console.status("[bold cyan]Oracle@Google Onboarding Agent reasoning and querying live tools...[/bold cyan]"):
-        turn = agent.send_message(prompt)
+    with console.status("[bold cyan]Oracle@Google Onboarding Agent reasoning and querying live tools...[/bold cyan]") as status_spinner:
+        def _on_live_event(ev: dict) -> None:
+            etype = ev.get("event_type")
+            if etype == "tool_start":
+                status_spinner.update(
+                    f"[bold cyan]Running `{ev.get('tool_name')}` ({ev.get('guardrail_layer')})...[/bold cyan]"
+                )
+            elif etype == "guardrail_verify":
+                status_spinner.update(
+                    f"[bold green]Post-Gen Compiler Verified ({ev.get('hcl_blocks_inspected', 0)} HCL block(s))...[/bold green]"
+                )
+            elif etype == "auto_repair":
+                status_spinner.update(
+                    f"[bold yellow]Auto-Repair Guardrail Self-Healing (Attempt #{ev.get('attempt')})...[/bold yellow]"
+                )
+
+        turn = agent.send_message(prompt, on_event=_on_live_event)
 
     _render_tool_traces(turn)
     badge = "GUARDRAILS VERIFIED" if turn.guardrail_verified else "GUARDRAIL WARNING"
@@ -482,7 +796,7 @@ def chat(
         Panel.fit(
             f"[bold cyan]Oracle@Google Onboarding Agent — Interactive CLI Session[/bold cyan]\n"
             f"Connected via: [bold green]{config.masked_credential_summary}[/bold green] | Model: [bold]{config.model}[/bold]\n"
-            f"Capabilities: Onboarding Lifecycle | ODB Networks & Topologies | Diagrams | Production Terraform | Day-2 Guardrails\n"
+            f"Capabilities: Onboarding Lifecycle | Architecture Wizard | 6-Phase Tracker | Diagrams | Terraform | Day-2 Simulator\n"
             f"Type [bold yellow]exit[/bold yellow] or [bold yellow]quit[/bold yellow] to end the session.",
             border_style="cyan",
         )
@@ -501,8 +815,19 @@ def chat(
             console.print("[dim]Goodbye![/dim]")
             break
 
-        with console.status("[bold cyan]Oracle@Google Onboarding Agent thinking & calling live tools...[/bold cyan]"):
-            turn = agent.send_message(user_input)
+        with console.status("[bold cyan]Oracle@Google Onboarding Agent thinking & calling live tools...[/bold cyan]") as status_spinner:
+            def _on_live_event(ev: dict) -> None:
+                etype = ev.get("event_type")
+                if etype == "tool_start":
+                    status_spinner.update(
+                        f"[bold cyan]Running `{ev.get('tool_name')}` ({ev.get('guardrail_layer')})...[/bold cyan]"
+                    )
+                elif etype == "guardrail_verify":
+                    status_spinner.update(
+                        f"[bold green]Post-Gen Compiler Verified ({ev.get('hcl_blocks_inspected', 0)} HCL block(s))...[/bold green]"
+                    )
+
+            turn = agent.send_message(user_input, on_event=_on_live_event)
 
         _render_tool_traces(turn)
         console.print(
@@ -573,4 +898,5 @@ def studio(
 
 if __name__ == "__main__":
     app()
+
 

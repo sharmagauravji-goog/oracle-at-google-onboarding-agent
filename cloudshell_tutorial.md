@@ -39,7 +39,49 @@ odb-onboarding-agent onboarding-guide --topic encryption_and_cmek
 
 ---
 
-## Step 4: Generate Interactive HTML5, Mermaid & ASCII Architecture Diagrams
+## Step 4: Run the Guided Architecture Discovery & Sizing Wizard
+
+Recommend the right Oracle Database@Google Cloud service (`adb`, `exadata_dedicated`, `exascale`, or `basedb`), non-overlapping `/24` + `/27` CIDR layout, interactive HTML5 diagram, and verified Golden Terraform bundle:
+
+```bash
+odb-onboarding-agent wizard \
+  --workload-profile autonomous_ai_lakehouse \
+  --ha-dr-tier regional_ha \
+  --network-model shared_vpc \
+  --encryption gcp_cmek \
+  --project-id "$GOOGLE_CLOUD_PROJECT" \
+  --generate-bundle \
+  --save-html
+```
+
+*(Tip: Run `odb-onboarding-agent wizard --interactive` for guided terminal prompts!)*
+
+---
+
+## Step 5: Track & Auto-Verify Your 6-Phase Onboarding Journey
+
+Auto-verify your active Google Cloud project's APIs, IAM roles, VPC subnets, and generated Terraform files across the 6 onboarding phases (persisted in `./output/onboarding_progress.json`):
+
+```bash
+odb-onboarding-agent tracker \
+  --action auto_verify \
+  --project-id "$GOOGLE_CLOUD_PROJECT" \
+  --region us-east4
+```
+
+Mark a manual phase (such as Marketplace subscription) complete:
+
+```bash
+odb-onboarding-agent tracker \
+  --action update_phase \
+  --phase 2 \
+  --status completed \
+  --notes "Marketplace Private Offer accepted"
+```
+
+---
+
+## Step 6: Generate Interactive HTML5, Mermaid & ASCII Architecture Diagrams
 
 Generate syntax-verified Mermaid (`mermaid`), terminal ASCII, and standalone interactive HTML5 topology explorers:
 
@@ -51,40 +93,31 @@ odb-onboarding-agent diagram --type networking_hub_and_spoke_ha_dr --format inte
 cloudshell download ./output/diagrams/hub-spoke.html
 ```
 
-To launch the full **Interactive Topology, Live Digital Twin & Blueprint-to-Terraform Studio** in **Cloud Shell Web Preview** (port `8080`):
+To launch the full **Interactive Topology, Architecture Wizard, 6-Phase Progress Tracker & Day-2 Simulator Studio** in **Cloud Shell Web Preview** (port `8080`):
 
 ```bash
 odb-onboarding-agent studio --cloud-shell
 ```
 
-Then click **Web Preview -> Preview on port 8080** in the Cloud Shell toolbar (press `Ctrl+C` when ready to continue to Step 5).
+Then click **Web Preview -> Preview on port 8080** in the Cloud Shell toolbar (press `Ctrl+C` when ready to continue to Step 7).
 
 ---
 
-## Step 5: Generate a Verified Day-1 Golden Terraform Bundle
+## Step 7: Simulate Day-2 Scaling & Guard Against `ForceNew` Replacements
 
-Generate a deterministic, compiler-verified Terraform bundle (`main.tf`, `variables.tf`, `outputs.tf`, `versions.tf`) for an **Oracle 23ai Autonomous Database** (`adb`), **Exadata Dedicated** (`exadata_dedicated`), **Exascale** (`exascale`), or **BaseDB** (`basedb`):
+Simulate scaling ECPUs and storage online vs. mutating immutable `ForceNew` attributes (`client_subnet_cidr`, `gcp_oracle_zone`):
 
 ```bash
-odb-onboarding-agent generate-golden \
-  --project-id "$GOOGLE_CLOUD_PROJECT" \
+odb-onboarding-agent simulate-day2 \
   --workload adb \
-  --region us-east4 \
-  --oracle-zone us-east4-b-r1 \
-  --bundle-name adb-prod
+  --current-compute 4 \
+  --proposed-compute 16 \
+  --current-storage-tb 1 \
+  --proposed-storage-tb 4 \
+  --save-html
 ```
 
-Inspect the generated files inside `./output/adb-prod`:
-
-```bash
-ls -la ./output/adb-prod
-```
-
----
-
-## Step 6: Audit Day-2 Maintenance & `deletion_protection` Posture
-
-Run the Day-2 Maintenance Guard against `./output` to verify `deletion_protection = true` and identify `ForceNew` replacement risks before modifying existing Terraform code:
+Run the Day-2 Maintenance Guard against `./output` to verify `deletion_protection = true`:
 
 ```bash
 odb-onboarding-agent inspect-day2 --workspace-dir ./output
@@ -92,16 +125,17 @@ odb-onboarding-agent inspect-day2 --workspace-dir ./output
 
 ---
 
-## Step 7: Launch Interactive Multi-Turn Onboarding & Architecture Chat
+## Step 8: Launch Interactive Multi-Turn Onboarding & Architecture Chat
 
-Start a conversational session with the **Oracle@Google Onboarding Agent**:
+Start a conversational session with the **Oracle@Google Onboarding Agent** (featuring live streaming tool telemetry and the 5-Layer Guardrail Scorecard):
 
 ```bash
 odb-onboarding-agent chat
 ```
 
 Try asking:
-- *"Walk me through the complete Oracle@Google onboarding process — Prerequisites, Marketplace Private Offer vs PAYG, OCI Account Linking, and MOS CSI registration — and include an end-to-end Mermaid diagram."*
+- *"Run the architecture discovery wizard for a mission-critical OLTP RAC workload with cross-region Data Guard and Shared VPC."*
+- *"Check our 6-phase onboarding progress tracker and auto-verify our live GCP readiness."*
+- *"Simulate scaling our Autonomous Database from 4 to 16 ECPUs and check if changing `client_subnet_cidr` triggers a `ForceNew` replacement."*
 - *"Explain ODB Networks (`CLIENT_SUBNET` vs `BACKUP_SUBNET`) and generate a Hub-and-Spoke NCC + Cloud Interconnect diagram."*
-- *"How do Backup & Recovery, Google Cloud KMS CMEK (`gcp-sa-oracledatabase`), and Cloud Monitoring work for Exadata VM Clusters?"*
-- *"Inspect ./output/adb-prod and modify it to scale compute_count from 4 to 8 ECPUs in-place without triggering a ForceNew replacement."*
+

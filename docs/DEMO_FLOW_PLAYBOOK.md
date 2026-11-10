@@ -336,3 +336,21 @@ Below are **4 additional modular flows** (5–8 minutes each) that you can run s
      - `./output/sod-2-infra/`: Contains only `google_oracle_database_cloud_exadata_infrastructure` and exports `exadata_infrastructure_name`.
      - `./output/sod-3-database/`: Contains only `google_oracle_database_cloud_vm_cluster` referencing `var.existing_odb_network`, `var.existing_client_odb_subnet`, `var.existing_backup_odb_subnet`, and `var.existing_exadata_infrastructure` so the DBA team never touches or recreates network or physical rack resources.
 
+---
+
+### Demo Flow 6: Guided Architecture Wizard, 6-Phase Onboarding Tracker & Interactive Day-2 What-If Simulator (7 Mins)
+
+**Best For:** Interactive customer workshops in **Google Cloud Shell**, **Streamlit Web Studio**, or **Antigravity / Cursor / Claude Code IDE** where architects want guided decision-making, persistent onboarding tracking, and visual blast-radius simulation.
+
+1. **Step 1 — Run the Guided Architecture Discovery & Sizing Wizard:**
+   - **Customer Prompt (IDE / Chat):** *"Use `run_odb_architecture_wizard` to recommend an architecture for a mission-critical consolidated ERP RAC workload with cross-region Data Guard, Hub-and-Spoke NCC networking, and Google Cloud KMS CMEK, and generate the Golden Terraform bundle."*
+   - **Or via Cloud Shell CLI:** `odb-onboarding-agent wizard --interactive --generate-bundle --save-html`
+   - **Result:** Recommends `exadata_dedicated` (`google_oracle_database_cloud_exadata_infrastructure` + `google_oracle_database_cloud_vm_cluster`), computes non-overlapping `/24` + `/27` CIDRs, renders the interactive topology spec, and writes the verified Golden Terraform bundle to `./output`.
+2. **Step 2 — Auto-Verify & Persist the 6-Phase Onboarding Progress Tracker:**
+   - **Customer Prompt (IDE / Chat):** *"Use `manage_onboarding_progress_tracker` with `action='auto_verify'` for project `my-odb-demo-project` in `us-east4` to check our 6-phase onboarding progress."*
+   - **Or via Cloud Shell CLI:** `odb-onboarding-agent tracker --action auto_verify --project-id my-odb-demo-project --region us-east4`
+   - **Result:** Probes live GCP APIs/IAM, live VPC subnet overlaps, and workspace `.tf` files, updates `./output/onboarding_progress.json`, and returns `digital_twin_node_overlays` so every phase node on the Interactive Topology Canvas reflects its real-time status (`COMPLETED`, `IN PROGRESS`, `BLOCKED`, `PENDING`).
+3. **Step 3 — Simulate Day-2 Scaling vs. `ForceNew` Outages Visually:**
+   - **Customer Prompt (IDE / Chat):** *"Use `simulate_day2_scaling_what_if` on `adb` scaling `compute_count` from `4` to `16` ECPUs and changing `client_subnet_cidr` from `10.50.1.0/27` to `10.50.99.0/27`."*
+   - **Or via Cloud Shell CLI:** `odb-onboarding-agent simulate-day2 --workload adb --current-compute 4 --proposed-compute 16 --current-client-cidr 10.50.1.0/27 --proposed-client-cidr 10.50.99.0/27 --save-html`
+   - **Result:** Approves `compute_count: 4 -> 16` as safe online scaling, flags `cidr_range` as a critical `ForceNew` replacement, blocks saving the unsafe HCL to disk, and badges the affected subnet node with a pulsing red `-/+ FORCENEW RISK` indicator on the Interactive Topology Canvas.

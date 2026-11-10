@@ -38,7 +38,7 @@ An LLM-powered **Oracle@Google Onboarding Agent** built on the official [`google
 ### 3. Interactive Topology Explorer, Live "Digital Twin" Overlays & Diagram Generator
 Generates **Interactive HTML5 / Streamlit CCv2 SVG Topologies**, syntax-verified **Mermaid (`mermaid`)**, and **ASCII** diagrams via CLI, Web Studio, Chat, or IDE MCP Server:
 - **Interactive SVG Topology Explorer**: Pan/zoom canvas, live node search, **Click-to-Inspect Resource Drawer** (exact `hashicorp/google` HCL, least-privilege IAM roles, usable `/28` CIDR IP capacity math), and layer toggles (**Separation-of-Duties Team Ownership** color-coding, **CMEK Layer**, **Data Guard DR Layer**, and **Animated DNS/SQL\*Net/RMAN Packet Flows**).
-- **Live "Digital Twin" Readiness & Day-2 Blast-Radius Overlays**: Dynamically badges diagram nodes as `LIVE VERIFIED` (Green), `WARNING` (Amber), or `BLOCKER` (Red) from live GCP API/IAM/VPC subnet probes (with 1-click copyable `gcloud` remediation commands), or overlays `~ SAFE ONLINE` vs. pulsing `-/+ FORCENEW RISK` badges from Day-2 Terraform diffs.
+- **Live "Digital Twin" Readiness, 6-Phase Tracker & Day-2 Blast-Radius Overlays**: Dynamically badges diagram nodes as `LIVE VERIFIED` (Green), `WARNING` (Amber), or `BLOCKER` (Red) from live GCP API/IAM/VPC subnet probes (with 1-click copyable `gcloud` remediation commands), overlays **6-Phase Onboarding Progress Tracker** completion state (`COMPLETED`, `IN PROGRESS`, `BLOCKED`, `PENDING`), or overlays `~ SAFE ONLINE` vs. pulsing `-/+ FORCENEW RISK` badges from Day-2 Terraform diffs.
 - **Bidirectional "Visual Blueprint-to-Terraform" Canvas**: Edit `project_id`, `region`, `gcp_oracle_zone`, `vpc_cidr`, `client_subnet_cidr`, `backup_subnet_cidr`, `workload_type`, `deployment_layer`, `compute_count`, and `storage_size_tb` inside the diagram with real-time `/28` + RFC1918 overlap validation and 1-click **Sync Blueprint & Generate Golden Terraform** into `./output/`.
 - **7 Supported Topologies**:
   - `end_to_end_onboarding`: Complete 6-stage onboarding journey (Prerequisites -> Marketplace Private Offer/PAYG -> OCI Linking -> MOS/CSI Support -> ODB Network -> Terraform Provisioning).
@@ -49,7 +49,26 @@ Generates **Interactive HTML5 / Streamlit CCv2 SVG Topologies**, syntax-verified
   - `encryption_cmek`: Google Cloud KMS CMEK key hierarchy, `gcp-sa-oracledatabase` IAM binding, and Oracle TDE wallet encryption.
   - `monitoring_observability`: Dual-plane telemetry across Cloud Monitoring, Cloud Audit Logs, and Oracle AWR/Operations Insights.
 
-### 4. Production Terraform Generation (Monolithic & Layered Separation of Duties) + 5-Layer Anti-Hallucination Guardrails
+### 4. Interactive Onboarding Workflows (Wizard, 6-Phase Tracker, Day-2 Simulator & Live Guardrail Telemetry)
+- **Guided Architecture Discovery & Sizing Wizard (`recommend_odb_architecture_wizard` / `run_odb_architecture_wizard`)**:
+  - Evaluates workload profile (`autonomous_ai_lakehouse`, `oltp_mission_critical`, `consolidated_erp_rac`, `elastic_rac_cloud_native`, `single_instance_dev_test`), HA/DR tier (`regional_ha`, `multi_zone_or_cross_region_dr`, `standard_single_zone`), ECPU/storage requirements, network governance (`standalone_vpc`, `shared_vpc`, `hub_and_spoke`), encryption (`google_managed`, `gcp_cmek`, `oci_vault`), and Separation-of-Duties mode (`full_stack` vs. `enterprise_layered`).
+  - Recommends the optimal Oracle Database@Google Cloud service (`adb`, `exadata_dedicated`, `exascale`, `basedb`), exact `hashicorp/google` resource type, non-overlapping `/24` + `/27` CIDR plan, interactive topology spec, and optional 1-click Golden Terraform bundle in `./output`.
+- **Stateful 6-Phase Onboarding Progress Tracker (`manage_onboarding_progress_tracker`)**:
+  - Persists onboarding progress across Phases 1–6 inside `./output/onboarding_progress.json` (strictly workspace-sandboxed):
+    1. **Phase 1**: GCP Project, Billing & IAM Bootstrap
+    2. **Phase 2**: Google Cloud Marketplace Subscription (Private Offer / PAYG)
+    3. **Phase 3**: OCI Account Linking & Tenancy Federation
+    4. **Phase 4**: My Oracle Support (MOS) & CSI Registration
+    5. **Phase 5**: ODB Network & Subnet Provisioning (`CLIENT_SUBNET` & `BACKUP_SUBNET`)
+    6. **Phase 6**: Day-1 Workload Provisioning & Day-2 Guardrail Verification
+  - Supports `action="auto_verify"` to probe live GCP project APIs, IAM bindings, live VPC subnet overlaps, and workspace `.tf` files to automatically advance phases and project `digital_twin_node_overlays` onto the Interactive Topology Canvas.
+- **Interactive Day-2 What-If Scaling & `ForceNew` Simulator (`simulate_day2_scaling_what_if`)**:
+  - Simulates online Day-2 scaling (`compute_count`, `storage_size_tb`, `auto_scaling`) alongside what-if mutations of immutable `ForceNew` attributes (`client_subnet_cidr`, `gcp_oracle_zone`, `db_name`, `odb_network`).
+  - Computes downtime impact (`Zero-Downtime Online Scaling` vs. `CRITICAL DESTRUCTIVE REPLACEMENT`), renders a Day-2 Blast-Radius Interactive Topology Spec, and blocks writing `day2_simulated_update.tf` if any `ForceNew` replacement is triggered or `deletion_protection = false`.
+- **Live 5-Layer Guardrail & Tool-Execution Telemetry (`get_guardrail_telemetry_report`)**:
+  - Streams real-time lifecycle events (`tool_start`, `tool_complete`, `guardrail_verify`, `auto_repair`) during agent turns and produces a structured **5-Layer Anti-Hallucination Guardrail Scorecard** across Web Studio, CLI, and IDE MCP clients.
+
+### 5. Production Terraform Generation (Monolithic & Layered Separation of Duties) + 5-Layer Anti-Hallucination Guardrails
 - **Golden Baseline Templates (`generate_golden_odb_terraform`)** for Autonomous Database 23ai (`adb`), Exadata Dedicated (`exadata_dedicated`), Exascale (`exascale`), and BaseDB (`basedb`), supporting both:
   - **`deployment_layer="full_stack"` (Default)**: Complete single-bundle deployment (`networking.tf` + `workload.tf`).
   - **`deployment_layer="network_only"` (Network Team)**: Generates only `networking.tf` (`google_oracle_database_odb_network` + `google_oracle_database_odb_subnet`) with handoff outputs and zero database passwords in state.
@@ -59,11 +78,11 @@ Generates **Interactive HTML5 / Streamlit CCv2 SVG Topologies**, syntax-verified
 - **Pre-Flight Network CIDR (`/28` minimum) + Secret Leak Guard + Strict Workspace Path Containment**.
 - **Compiler Auto-Repair Loop (`validate_terraform_hcl`)** and **Day-2 `ForceNew` Destructive Replacement Guard**.
 
-### 5. IDE Model Context Protocol (`stdio` MCP) Server
-Exposes the agent's tools over JSON-RPC 2.0 `stdio` (`odb-mcp-server` or `odb-onboarding-agent mcp-serve`) for **VS Code**, **Cursor**, **Claude Desktop**, **Gemini CLI**, and **Antigravity IDE** with 5 strict engineering guardrails:
-1. **Never Exposes `terraform apply` or `terraform destroy`**: Only read-only onboarding guides, diagram generation, golden HCL generation, fast schema validation, and non-destructive Day-2 workspace inspection are exposed.
+### 6. IDE Model Context Protocol (`stdio` MCP) Server
+Exposes all **14 agent tools** over JSON-RPC 2.0 `stdio` (`odb-mcp-server` or `odb-onboarding-agent mcp-serve`) for **Antigravity IDE**, **VS Code**, **Cursor**, **Claude Code**, **Claude Desktop**, and **Gemini CLI** with 5 strict engineering guardrails:
+1. **Never Exposes `terraform apply` or `terraform destroy`**: Only read-only onboarding guides, architecture wizard, progress tracker, diagram generation, golden HCL generation, fast schema validation, and non-destructive Day-2 workspace simulation/inspection are exposed.
 2. **Strict `stdio` Stream Isolation**: Redirects `sys.stdout` to `sys.stderr` during tool execution so accidental `print()` statements or library warnings never corrupt the JSON-RPC stream.
-3. **Workspace Path Containment**: `generate_golden_terraform` and `inspect_day2_workspace` reject any path outside `ODB_WORKSPACE_ROOT` (preventing `../` traversal or `/etc`, `/tmp`, `~/.ssh` access).
+3. **Workspace Path Containment**: `generate_golden_terraform`, `manage_onboarding_progress_tracker`, `simulate_day2_scaling_what_if`, and `inspect_day2_workspace` reject any path outside `ODB_WORKSPACE_ROOT` (preventing `../` traversal or `/etc`, `/tmp`, `~/.ssh` access).
 4. **IDE Timeout Protection (`<50ms`)**: Uses fast validation mode (`fast_mode=True`) and returns concise summaries pointing to `./output/<bundle>` instead of streaming multi-kilobyte HCL payloads or blocking on slow `terraform init` downloads.
 5. **Configurable Model IDs via Environment Variables**: Set `ODB_AGENT_MODEL` or `GEMINI_MODEL` to any current or future Gemini model ID so you are never locked into a retired preview model.
 
@@ -71,7 +90,7 @@ Exposes the agent's tools over JSON-RPC 2.0 `stdio` (`odb-mcp-server` or `odb-on
 
 ## Option 1: One-Click Google Cloud Shell (Recommended — Zero Setup)
 
-Google Cloud Shell comes pre-authenticated with `gcloud`, `$GOOGLE_CLOUD_PROJECT`, Vertex AI ADC, and `terraform`—so the Interactive Topology Studio, Live Digital Twin GCP Readiness Overlays, and 1-click Blueprint-to-Terraform sync work immediately with zero API keys.
+Google Cloud Shell comes pre-authenticated with `gcloud`, `$GOOGLE_CLOUD_PROJECT`, Vertex AI ADC, and `terraform`—so the Interactive Topology Studio, Guided Architecture Wizard, 6-Phase Progress Tracker, Day-2 Simulator, Live Digital Twin GCP Readiness Overlays, and 1-click Blueprint-to-Terraform sync work immediately with zero API keys.
 
 Click **Open in Cloud Shell** above or run:
 
@@ -101,13 +120,14 @@ streamlit run ai_agent/web.py \
   --browser.gatherUsageStats=false
 ```
 
-Then click **Web Preview** (top-right of Cloud Shell) → **Preview on port 8080** to:
-- Pan/zoom topologies, inspect exact `hashicorp/google` HCL & IAM per node, and toggle CMEK / DR / Animated Packet Flows.
-- Click **Probe Live GCP Readiness** to overlay live API, IAM, and VPC subnet collision checks from your active Cloud Shell project.
-- Edit CIDRs/ECPUs in the **Blueprint Editor** and click **Sync Blueprint & Generate Golden Terraform** to write validated `.tf` files directly to `./output/` in Cloud Shell.
+Then click **Web Preview** (top-right of Cloud Shell) → **Preview on port 8080** to access all 7 interactive studio tabs:
+- **Tab 1 — Onboarding Agent Chat**: Multi-turn chat with live streaming tool telemetry (`st.status`), 5-Layer Guardrail Scorecard, and inline interactive diagrams.
+- **Tab 2 — Guided Architecture & Sizing Wizard**: Interactive workload/HA/network/CMEK selector with recommended ODB service, CIDR layout, interactive topology preview, and 1-click Golden Terraform bundle generation.
+- **Tab 3 — 6-Phase Progress Tracker & Digital Twin Studio**: Auto-verify live GCP project readiness, update Phases 1–6 in `./output/onboarding_progress.json`, and overlay live readiness or 6-Phase progress directly on the Interactive Topology Canvas.
+- **Tab 4 — Day-2 What-If Simulator & `ForceNew` Guard**: Drag ECPU/storage sliders vs. immutable `ForceNew` attributes (`cidr_range`, `gcp_oracle_zone`) to visualize blast radius on the Interactive Topology Canvas before touching production state.
 
 #### Mode B: Standalone Zero-CDN Interactive HTML5 Diagram (`cloudshell download` or Static Preview)
-Export any topology as a self-contained `.html` file (with pan/zoom, HCL/IAM inspector, layer toggles, and live `/28` CIDR validation):
+Export any topology, wizard recommendation, or Day-2 simulation blast radius as a self-contained `.html` file (with pan/zoom, HCL/IAM inspector, layer toggles, and live `/28` CIDR validation):
 
 ```bash
 odb-onboarding-agent diagram \
@@ -122,29 +142,44 @@ cloudshell download ./output/diagrams/onboarding.html
 python3 -m http.server 8080 --bind 127.0.0.1 --directory ./output/diagrams
 ```
 
-#### Mode C: Pure Cloud Shell Terminal CLI (Rich ASCII Diagrams & Multi-Turn Chat)
+#### Mode C: Pure Cloud Shell Terminal CLI (Wizard, Tracker, Day-2 Simulator, Diagrams & Chat)
 If staying strictly inside the Cloud Shell `bash` terminal without opening Web Preview:
 
 ```bash
 # 1. Verify environment & Vertex AI ADC connection
 odb-onboarding-agent doctor --ping-llm
 
-# 2. Query the Onboarding & Architecture Knowledge Base
+# 2. Run the Guided Architecture Discovery & Sizing Wizard (interactive prompts or CLI flags)
+odb-onboarding-agent wizard --interactive --generate-bundle --save-html
+odb-onboarding-agent wizard \
+  --workload-profile consolidated_erp_rac \
+  --ha-dr-tier multi_zone_or_cross_region_dr \
+  --network-model hub_and_spoke \
+  --encryption gcp_cmek \
+  --generate-bundle
+
+# 3. Track & Auto-Verify Your 6-Phase Onboarding Progress
+odb-onboarding-agent tracker --action auto_verify --project-id "$GOOGLE_CLOUD_PROJECT" --region us-east4
+odb-onboarding-agent tracker --action update_phase --phase 2 --status completed --notes "Subscribed via Marketplace Private Offer"
+odb-onboarding-agent tracker --action status
+
+# 4. Simulate Day-2 Scaling vs. ForceNew Replacement Risks
+odb-onboarding-agent simulate-day2 \
+  --workload adb \
+  --current-compute 4 \
+  --proposed-compute 16 \
+  --current-storage-tb 1 \
+  --proposed-storage-tb 4 \
+  --save-html
+
+# 5. Query the Onboarding & Architecture Knowledge Base
 odb-onboarding-agent onboarding-guide --topic overview
 odb-onboarding-agent onboarding-guide --topic marketplace_procurement
-odb-onboarding-agent onboarding-guide --topic odb_networks_and_topologies
 
-# 3. Render Rich ASCII & Mermaid Diagrams in Terminal
+# 6. Render Rich ASCII & Mermaid Diagrams in Terminal
 odb-onboarding-agent diagram --type end_to_end_onboarding --save-to ./output/diagrams/onboarding.md
-odb-onboarding-agent diagram --type networking_hub_and_spoke_ha_dr --save-html --save-to ./output/diagrams/hub-spoke.md
 
-# 4. Generate a Verified Day-1 Golden Terraform Bundle
-odb-onboarding-agent generate-golden --project-id "$GOOGLE_CLOUD_PROJECT" --workload adb
-
-# 5. Audit Day-2 Workspace Safety
-odb-onboarding-agent inspect-day2 --workspace-dir ./output
-
-# 6. Start Interactive Multi-Turn Onboarding & Architecture Chat
+# 7. Start Interactive Multi-Turn Onboarding & Architecture Chat (with Live Guardrail Scorecard)
 odb-onboarding-agent chat
 ```
 
@@ -152,7 +187,7 @@ odb-onboarding-agent chat
 
 ---
 
-## Option 2: Connect to Antigravity, VS Code, Cursor, or Claude Desktop via MCP Server
+## Option 2: Connect to Antigravity, Cursor, Claude Code, VS Code, or Gemini CLI via MCP Server
 
 ### Integrating with Antigravity IDE (Step-by-Step)
 
@@ -201,19 +236,19 @@ Add the `oracle-google-onboarding-agent` entry under `"mcpServers"` (replace `/A
 #### Step 3: Refresh & Verify Tool Discovery in Antigravity
 1. Save `mcp_config.json`.
 2. In the Antigravity Agent pane, navigate to **Additional Options (`...`) > MCP Servers** and click **Refresh** (or start a new conversation).
-3. Confirm that **`oracle-google-onboarding-agent`** shows a green connected status and lists all 10 tools (`get_odb_onboarding_guide`, `evaluate_onboarding_readiness`, `verify_live_onboarding_and_iam_readiness`, `generate_odb_diagram`, `generate_golden_terraform`, `validate_odb_network_cidrs`, `validate_odb_terraform_hcl`, `inspect_day2_workspace`, `analyze_day2_terraform_diff`, and `list_odb_provider_resources`).
+3. Confirm that **`oracle-google-onboarding-agent`** shows a green connected status and lists all **14 tools** (`get_odb_onboarding_guide`, `evaluate_onboarding_readiness`, `verify_live_onboarding_and_iam_readiness`, `run_odb_architecture_wizard`, `manage_onboarding_progress_tracker`, `simulate_day2_scaling_what_if`, `get_guardrail_telemetry_report`, `generate_odb_diagram`, `generate_golden_terraform`, `validate_odb_network_cidrs`, `validate_odb_terraform_hcl`, `inspect_day2_workspace`, `analyze_day2_terraform_diff`, and `list_odb_provider_resources`).
 4. *(Optional)* To sanity-check the `stdio` server from your terminal before connecting:
    ```bash
    echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | .venv/bin/odb-mcp-server
    ```
 
-#### Step 4: Invoke the MCP Tools from Antigravity Chat
-Once connected, Antigravity automatically discovers and invokes the MCP tools when you ask questions such as:
-- *"Use `evaluate_onboarding_readiness` to check our readiness for an Exadata Dedicated deployment in `us-east4` using a Shared VPC and CMEK."*
-- *"Use `verify_live_onboarding_and_iam_readiness` to check if anything is missing in project `my-odb-prod` before deploying Oracle Autonomous Database."*
-- *"Generate a hub-and-spoke HA/DR architecture diagram for Oracle Database@Google Cloud using `generate_odb_diagram`."*
-- *"Use `generate_golden_terraform` to create a Day-1 Autonomous Database (`adb`) Terraform bundle for project `my-odb-prod`."*
-- *"Run `inspect_day2_workspace` on `./output/odb-golden-bundle` and check for `ForceNew` replacement risks."*
+#### Step 4: Invoke the MCP Tools from Antigravity, Cursor, or Claude Code Chat
+Once connected, your IDE agent automatically discovers and invokes the MCP tools when you ask questions such as:
+- *"Use `run_odb_architecture_wizard` to recommend an Oracle@Google architecture for a mission-critical ERP RAC workload with cross-region DR, Shared VPC, and CMEK, and generate the Golden Terraform bundle."*
+- *"Use `manage_onboarding_progress_tracker` with `action='auto_verify'` for project `my-odb-prod` in `us-east4` to check our 6-phase onboarding progress."*
+- *"Use `simulate_day2_scaling_what_if` to check what happens if we scale our Autonomous Database from 4 to 16 ECPUs vs. changing `client_subnet_cidr`."*
+- *"Use `get_guardrail_telemetry_report` to run a 5-Layer Anti-Hallucination Guardrail audit on `./output`."*
+- *"Generate a hub-and-spoke HA/DR architecture diagram for Oracle Database@Google Cloud using `generate_odb_diagram` with `save_interactive_html=true`."*
 
 ---
 
@@ -237,6 +272,17 @@ Create `.vscode/mcp.json` (or `.cursor/mcp.json`) in your project workspace:
 }
 ```
 
+### Claude Code CLI (`claude mcp add`)
+Register the `stdio` MCP server directly in **Claude Code**:
+
+```bash
+claude mcp add oracle-google-onboarding-agent \
+  -e ODB_WORKSPACE_ROOT="$(pwd)" \
+  -e ODB_AGENT_MODEL="gemini-3.8-flash" \
+  -e ODB_FAST_VALIDATION="1" \
+  -- /ABSOLUTE/PATH/TO/oracle-at-google-onboarding-agent/.venv/bin/odb-mcp-server
+```
+
 ### Claude Desktop (`claude_desktop_config.json`) / Gemini CLI (`settings.json`)
 ```json
 {
@@ -254,12 +300,16 @@ Create `.vscode/mcp.json` (or `.cursor/mcp.json`) in your project workspace:
 }
 ```
 
-### MCP Tools Exposed to Your IDE
+### All 14 MCP Tools Exposed to Your IDE
 | MCP Tool | Purpose | Safety Guardrail |
 | :--- | :--- | :--- |
 | `get_odb_onboarding_guide` | Grounded answers on Prerequisites, Marketplace (Private Offer vs PAYG), OCI Linking, MOS/CSI Support, ODB Networks, Backup, CMEK, Monitoring | Read-only knowledge base |
 | `evaluate_onboarding_readiness` | Evaluates customer onboarding readiness (0–100 score + missing checklist items & `gcloud` bootstrap commands) | Read-only evaluator |
 | `verify_live_onboarding_and_iam_readiness` | Queries live GCP project APIs (`oracledatabase.googleapis.com`), active IAM roles (`roles/oracledatabase.admin`), and Marketplace/OCI link readiness | Read-only live GCP pre-flight check |
+| `run_odb_architecture_wizard` | Guided Architecture Discovery & Sizing Wizard recommending `adb`, `exadata_dedicated`, `exascale`, or `basedb`, CIDR layout, interactive topology spec, and optional Golden Terraform bundle | Workspace path sandboxed, `/28` CIDR verified |
+| `manage_onboarding_progress_tracker` | Stateful 6-Phase Onboarding Progress Tracker (`status`, `update_phase`, `auto_verify`, `reset`) persisted in `./output/onboarding_progress.json` with Digital Twin node overlays | Workspace path sandboxed |
+| `simulate_day2_scaling_what_if` | Interactive Day-2 What-If Scaling & `ForceNew` Simulator comparing online ECPU/storage scaling vs. destructive `ForceNew` mutations with blast-radius topology spec | Blocks writing HCL if `ForceNew` risk or `deletion_protection=false` |
+| `get_guardrail_telemetry_report` | Runs a 5-Layer Anti-Hallucination Guardrail audit across workspace `.tf` files and/or HCL snippet and returns a structured `guardrail_scorecard` | Workspace path sandboxed, read-only |
 | `generate_odb_diagram` | Generates Interactive SVG Topology specs/standalone HTML5 (`save_interactive_html=true`), Mermaid (`mermaid`), and ASCII diagrams | Workspace path sandboxed + CSP nonce |
 | `generate_golden_terraform` | Generates verified Day-1 Golden Terraform (`networking.tf`, `workload.tf`, `variables.tf`, `outputs.tf`, `versions.tf`) in `./output/<bundle>` | Fast validation (`<50ms`), concise summary, workspace sandboxed |
 | `validate_odb_terraform_hcl` | Validates HCL against `EXACT_ODB_RESOURCE_SCHEMAS`, `/28` subnet rules, and secret-leak rules | Fast validation (`<50ms`), read-only |
